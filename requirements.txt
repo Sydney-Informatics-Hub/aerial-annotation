@@ -5,3 +5,7 @@ geopandas
 matplotlib
 rasterio
 numpy
+overpy
+geojson
+overpass
+osmtogeojson
