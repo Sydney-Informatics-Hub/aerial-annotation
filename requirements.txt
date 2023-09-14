@@ -9,3 +9,5 @@ overpy
 geojson
 overpass
 osmtogeojson
+pre-commit
+
