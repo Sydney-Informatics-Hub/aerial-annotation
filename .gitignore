@@ -160,10 +160,12 @@ cython_debug/
 #.idea/
 
 
-*.csv
-*.tif
-xw*
-*json
-*.txt
-*.png
-*.xml
+draft/*.xml
+draft/*.png
+draft/*.txt
+draft/*json
+draft/*.csv
+draft/*.tif
+draft/xw*
+draft/test/
+draft/sa1*

@@ -39,7 +39,13 @@ class SA1Image:
             self.grid_y = None
             self.size = None
 
-        def download_image(self):
+        def download_image(self) -> None:
+            """Downloads an image from `self.url` with form 'https://maps.six.n
+            sw.gov.au/arcgis/rest/services/sixmaps/LPI_Imagery_Best/MapServer/t
+            ile/{z}/{x}/{y}' and stores it as bytes."""
+            if not self.image_bytes:
+                return
+
             params = {
                 "blank_tile": "false",
             }
@@ -57,7 +63,7 @@ class SA1Image:
         """Initialize an SA1Image object.
 
         Args:
-            sa1_gdf (GeoDataFrame): GeoDataFrame containing SA1 data.
+            sa1_gdf (GeoDataFrame): GeoDataFrame containing a single SA1 data including the bounding box of the polygon.
             zoom_level (int): Zoom level for map tiles.
         """
         self.sa1_code = sa1_gdf.iloc[0]["SA1_CODE21"]
@@ -81,18 +87,28 @@ class SA1Image:
 
         self.buildings = self.get_osm_building_annotations()
 
-    def get_tiles(self) -> list[Tile]:
+    def get_tiles(self) -> list:
+        """This method returns a list of Tile objects required to cover the
+        specified geographic bounding box at the given zoom level of the SA1
+        polgon.
+
+        Returns:
+            list[Tile]: A list of Tile objects representing the tiles covering the specified area.
+
+        Note:
+            The actual raster image of each Tile will not be downloaded using the method. To download the raster image, use `download_tile_images(self)`.
+        """
+
         tiles = list(mercantile.tiles(*self.sa1_bbox, self.zoom_level))
         tiles_list = []
 
         for tile in tiles:
-            # url = f'{SA1Image.base_url}/tile/{self.zoom_level}/{tile.y}/{tile.x}'
             tile_image = self.Tile(
                 zoom_level=self.zoom_level, row=tile.y, column=tile.x
             )
             tiles_list.append(tile_image)
 
-        # calculate where each tile should be placed in the final grid
+        # calculate where each tile should be placed in the final grid of tiles
         smallest_row = min(tiles_list, key=lambda x: x.row).row
         smallest_column = min(tiles_list, key=lambda x: x.column).column
 
@@ -103,10 +119,20 @@ class SA1Image:
         return tiles_list
 
     def download_tile_images(self) -> None:
+        """Downloads the image bytes for each Tile in the `self.tiles` list."""
         for tile in self.tiles:
             tile.download_image()
 
-    def calculate_bounding_box(self) -> list:  # extent coordinates for matplotlib
+    def calculate_bounding_box(self) -> list:
+        """Calculates the bounding box coordinates in the format suitable for
+        using matplotlib to plot the raster image and the SA1 polygon.
+
+        This method calculates the extent coordinates of the bounding box for the set of tiles, defined by their grid positions and zoom level.
+        It identifies the top-left and bottom-right tiles from the 'self.tiles' list and calculates the corresponding latitude and longitude coordinates.
+
+        Returns:
+            A list containing four elements in the order [left_longitude, right_longitude, bottom_latitude, top_latitude].
+        """
         top_left_tile = next(
             (tile for tile in self.tiles if tile.grid_x == 0 and tile.grid_y == 0), None
         )
@@ -130,6 +156,18 @@ class SA1Image:
         return [top_left_lng, bottom_right_lng, bottom_right_lat, top_left_lat]
 
     def stitch_images(self) -> Image.Image:
+        """Stitch together the set of image tiles in 'self.tiles' to create a
+        single composite image.
+
+        The method calculates the dimensions of the final composite image based on the maximum x and y coordinates of the grid and the size
+        of individual tiles. It then pastes each tile onto the final image at its corresponding grid coordinates.
+
+        If the tiles do not have image data (image bytes), this method attempts to download the image data
+        by invoking 'self.download_tile_images()' before stitching.
+
+        Returns:
+            An instance of the PIL.Image.Image class representing the stitched composite image.
+        """
         if not self.tiles[0].image_bytes:
             self.download_tile_images()
 
@@ -156,7 +194,9 @@ class SA1Image:
 
         return final_image
 
-    def plot(self):
+    def plot(self) -> None:
+        """Plot the stitched image with an overlay of the SA1 polygon on a
+        matplotlib axis."""
         self.image = self.stitch_images()
 
         fig, ax = plt.subplots()
@@ -166,13 +206,15 @@ class SA1Image:
         self.polygon.plot(ax=ax, facecolor="none", edgecolor="red", linewidth=2)
         plt.show()
 
-    def get_osm_building_annotations(self):
-        """Get building annotations from OSM for the current SA1 area."""
-        sa1_bbox = self.sa1_bbox
-        # api = overpass.API()
-        # res = api.get(query)
+    def get_osm_building_annotations(self) -> gpd.GeoDataFrame:
+        """This method queries the OpenStreetMap (OSM) database to obtain
+        building annotations within the geographic bounds of the current SA1
+        area defined by 'self.sa1_bbox'.
 
-        # -33.80627058022732,151.17650985717773,-33.79785455471434,151.18669152259827
+        Returns:
+            A GeoDataFrame containing building annotations for buildings that intersect with the current SA1 area.
+        """
+        sa1_bbox = self.sa1_bbox
         query = f"""
         [out:json];
         (
@@ -211,7 +253,14 @@ class SA1Image:
 
         return buildings_within_sa1
 
-    def calculate_annotated_ratio(self):
+    def calculate_annotated_ratio(self) -> float:
+        """This method calculates the ratio of the total area covered by
+        annotated buildings (self.buildings) within the current SA1 area
+        (self.polygon) to the total area of the SA1 polygon itself.
+
+        Returns:
+            The ratio of annotated building area to the SA1 area as a percentage (rounded to two decimal places).
+        """
         self.buildings = self.buildings.to_crs("EPSG:3857")
         self.polygon = self.polygon.to_crs("EPSG:3857")
 
@@ -220,20 +269,31 @@ class SA1Image:
 
         return round(buildings_area / sa1_area, 2) * 100  # returning percentage
 
-    def save_osm_buildings_geojson(self) -> None:
-        self.buildings.to_file(
-            f"buildings_within_sa1_{self.sa1_code}.geojson", driver="GeoJSON"
-        )
-        print(f"Saved osm buildings to buildings_within_sa1_{self.sa1_code}.geojson")
+    def save_osm_buildings_geojson(self, file_name: str = "") -> None:
+        """Save OSM building annotations as a GeoJSON file.
+
+        Args:
+            file_name (str, optional): The name of the output GeoJSON file (default is an auto-generated name based on the SA1 code).
+        """
+        if not file_name:
+            file_name == f"buildings_within_sa1_{self.sa1_code}.geojson"
+        self.buildings.to_file(file_name, driver="GeoJSON")
+        print(f"Saved osm buildings to {file_name}")
 
     def save_as_full_geotiff(
         self, output_folder: str = "test", file_name: str = ""
     ) -> None:
+        """Save the entire stitched image as a GeoTIFF file with geospatial
+        information.
+
+        Args:
+            output_folder (str): The folder where the GeoTIFF file will be saved (default is "test").
+            file_name (str): The name of the output GeoTIFF file (default is "<sa1_code>_full.tif").
+        """
         self.image = self.stitch_images()
         width, height = self.image.size
 
-        # Replace lon1, lon2, lat1, lat2 with the left side, right side, bottom side, top side bbox coordinates of the area
-        # top_left_lng, bottom_right_lng, bottom_right_lat, top_left_lat
+        # Replace lon1, lon2, lat1, lat2 with the left side, right side, bottom side, top side bbox coordinates of the area, i.e. top_left_lng, bottom_right_lng, bottom_right_lat, top_left_lat
         lon1, lon2, lat1, lat2 = self.tiles_bbox
 
         # Calculate the pixel width and pixel height
@@ -273,11 +333,17 @@ class SA1Image:
     def save_as_sa1_geotiff(
         self, output_folder: str = "test", file_name: str = ""
     ) -> None:
+        """Save a GeoTIFF image of the current SA1 area with non-SA1 areas as
+        transparent.
+
+        Args:
+            output_folder (str): The folder where the GeoTIFF file will be saved (default is "test").
+            file_name (str): The name of the output GeoTIFF file (default is "<sa1_code>_sa1.tif").
+        """
         self.image = self.stitch_images()
         width, height = self.image.size
 
-        # Replace lon1, lon2, lat1, lat2 with the left side, right side, bottom side, top side bbox coordinates of the area
-        # top_left_lng, bottom_right_lng, bottom_right_lat, top_left_lat
+        # Replace lon1, lon2, lat1, lat2 with the left side, right side, bottom side, top side bbox coordinates of the area, i.e. top_left_lng, bottom_right_lng, bottom_right_lat, top_left_lat
         lon1, lon2, lat1, lat2 = self.tiles_bbox
 
         # Calculate the pixel width and pixel height

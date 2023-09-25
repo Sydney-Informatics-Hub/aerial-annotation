@@ -4,8 +4,7 @@ Open source annotations tools for aerial imagery. Part of https://github.com/Syd
 
 ## Input Data Format
 
-Download the SA1 file from https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3/jul2021-jun2026/access-and-downloads/digital-boundary-files or similar.
-
+Download the SA1 file from [Australian Bureau of Statistics](https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3/jul2021-jun2026/access-and-downloads/digital-boundary-files) or similar.
 
 ## Output Data Format
 
