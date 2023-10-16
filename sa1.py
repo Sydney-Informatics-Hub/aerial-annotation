@@ -43,9 +43,6 @@ class SA1Image:
             """Downloads an image from `self.url` with form 'https://maps.six.n
             sw.gov.au/arcgis/rest/services/sixmaps/LPI_Imagery_Best/MapServer/t
             ile/{z}/{x}/{y}' and stores it as bytes."""
-            if not self.image_bytes:
-                return
-
             params = {
                 "blank_tile": "false",
             }
