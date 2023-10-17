@@ -1,1 +1,13 @@
+Pillow
+requests
+mercantile
+geopandas
+matplotlib
+rasterio
+numpy
+overpy
+geojson
+overpass
+osmtogeojson
 pre-commit
+

@@ -4,12 +4,24 @@ Open source annotations tools for aerial imagery. Part of https://github.com/Syd
 
 ## Input Data Format
 
-Images.
+Download the SA1 file from [Australian Bureau of Statistics](https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3/jul2021-jun2026/access-and-downloads/digital-boundary-files) or similar.
 
 ## Output Data Format
 
 Images and annotations stored in COCO JSON format. 
 
+
+
+## Instructions
+
+```
+conda create --name aerial-annotation python=3.9
+
+conda activate aerial-annotation
+
+pip install -r requirements.txt
+
+```
 
 ## Dataset
 
@@ -48,9 +60,6 @@ cfg.DATASETS.TRAIN = (f"{dataset_name}_train",)
 cfg.DATASETS.TEST = (f"{dataset_name}_test",)
 # then do the other configs
 
-``` -->
-
-
 ### Commit rules:
 
 In this project, `pre-commit` is being used. Hence, please make sure you have it in your
@@ -67,3 +76,4 @@ pre-commit install
 ```
 
 this will run the pre-commit hooks every time you commit changes to the repository.
+
