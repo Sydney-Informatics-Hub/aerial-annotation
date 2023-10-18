@@ -5,6 +5,7 @@ import argparse
 import glob
 import os
 import shutil
+from functools import partialmethod
 
 import cv2
 import geojson
@@ -75,6 +76,7 @@ def my_predict(
     save_args={},
     return_results=False,
     return_coords=False,
+    box_reject=1.1,
     **kwargs,
 ):
     """Stolen from predict bu thtis one romoves boxes larger and 0.6 times the
@@ -124,10 +126,10 @@ def my_predict(
     boxes, logits, phrases = self.predict_dino(
         image_pil, text_prompt, box_threshold, text_threshold
     )
-    # Maximum area for a box is 60% of image area
+    # Maximum area for a box in box_reject
     keep_b, keep_l, keep_p = ([], [], [])
     im_w, im_h = image_pil.size
-    max_area = 1.0 * im_w * im_h
+    max_area = box_reject * im_w * im_h
     for this_b, this_l, this_p in zip(boxes, logits, phrases):
         this_area = (this_b[2] - this_b[0]) * (this_b[3] - this_b[1])
         if this_area < max_area:
@@ -188,9 +190,16 @@ def my_predict(
         return boxlist
 
 
-def run_model(input_images, bt=0.23, tt=0.24, output_dir="masks", text_prompt="tree"):
+def run_model(
+    input_images,
+    bt=0.23,
+    tt=0.24,
+    output_dir="masks",
+    text_prompt="tree",
+    box_reject=0.99,
+):
     # Generate segment anything model and use it to make masks
-    LangSAM.predict = my_predict
+    LangSAM.predict = partialmethod(my_predict, box_reject=box_reject)
     sam = LangSAM()
     sam.predict_batch(
         images=input_images,
@@ -257,6 +266,7 @@ def annotate_trees(
     tile_dir="tiles",
     class_dir="masks",
     cleanup=True,
+    box_reject=0.99,
 ):
     """Split up an image, Run segment anything on it and plot the result."""
 
@@ -322,7 +332,12 @@ def annotate_trees(
 
     # Now we have our tiles, generate the segment anything classification
     run_model(
-        tile_dir, bt=b_thresh, tt=tt, output_dir=class_dir, text_prompt=text_prompt
+        tile_dir,
+        bt=b_thresh,
+        tt=tt,
+        output_dir=class_dir,
+        text_prompt=text_prompt,
+        box_reject=box_reject,
     )
 
     # Output mask is in merged.tif raster - convert to geojson.
