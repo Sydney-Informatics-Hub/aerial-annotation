@@ -55,7 +55,9 @@ def main():
 
     for filename in os.listdir(os.path.join(root_directory, folder_path)):
         if filename.startswith("sa1images") and filename.endswith(".txt"):
-            file_path = os.path.join(folder_path, filename)
+            file_path = os.path.join(
+                os.path.join(root_directory, folder_path), filename
+            )
 
             with open(file_path, "r") as file:
                 sa1_list = file.read().split("\n")
