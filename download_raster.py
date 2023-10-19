@@ -14,7 +14,7 @@ def download(sa1_list, nsw_gdf, output_folder: str):
         if not sa1_gdf.empty:
             sa1_image = SA1Image(sa1_gdf, 21)
             sa1_image.save_as_full_geotiff(output_folder=f"{output_folder}_full")
-            sa1_image.save_as_sa1_geotiff(output_folder=f"{output_folder}_sa1_only")
+            # sa1_image.save_as_sa1_geotiff(output_folder=f"{output_folder}_sa1_only")
 
 
 def main():
