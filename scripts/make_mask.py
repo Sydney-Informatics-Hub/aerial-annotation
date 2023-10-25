@@ -8,15 +8,14 @@ import shutil
 from functools import partialmethod
 
 import cv2
-import geojson
 import numpy as np
 import rasterio
 import rioxarray
 import torch
 from matplotlib import pylab as plt
 from PIL import Image
-from samgeo import split_raster, tms_to_geotiff
-from samgeo.common import raster_to_geojson, download_file
+from samgeo import split_raster
+from samgeo.common import download_file, raster_to_geojson
 from samgeo.text_sam import LangSAM, array_to_image
 
 
@@ -39,14 +38,14 @@ def show_mask(
 
     Inputs
     ======
-    image: an input image array - ideally in colour
-    mask: an input mask array - ideally with two values (0=masked, 255=unmasked)
+    image (np.ndarray): An input image array - ideally in colour
+    mask (np.ndarray): An input mask array - two values (0=masked, 255=unmasked)
 
-    alpha: transparency of mask when overlaid onto image
-    color: color of mask image
-    edges: determine the edges of the mask and draw a solid line from these
-    edge_colour: colour of the edge highlight
-    output: filename to output figure to
+    alpha (float, optional): Transparency of mask when overlaid onto image
+    cmap (str, optional): Colourmap to use for mask image
+    edges (bool, optional): determine the edges of the mask and draw a solid line from these
+    edge_colour (str, optional): colour of the edge highlight
+    output (str, optional): filename to output figure to (if None, plot on the screen)
     """
     fig = plt.figure(figsize=(20, 20))
     plt.imshow(image)
@@ -64,7 +63,7 @@ def show_mask(
     plt.close(fig)
 
 
-def my_predict(
+def predict_with_box_reject(
     self,
     image,
     text_prompt,
@@ -79,9 +78,19 @@ def my_predict(
     box_reject=1.1,
     **kwargs,
 ):
-    """Stolen from predict bu thtis one romoves boxes larger and 0.6 times the
-    image area before the sam predict. Run both GroundingDINO and SAM model
-    prediction.
+    """Run both GroundingDINO and SAM model prediction on a single image.
+
+    NOTE: Stolen from LangSAM.predict() but this adds an option to reject boxes larger than
+    a given fraction of the image area before the SAM predict step. This is inteded to be
+    monkey-patched into the LangSAM model via the following signature:
+
+            from functools import partialmethod
+            from samgeo.text_sam import LangSAM
+
+            LangSAM.predict = partialmethod(predict_with_box_reject, box_reject=...)
+            sam = LangSAM()
+            ...
+            result = sam.predict_batch(...)
 
     Parameters:
         image (Image): Input PIL Image.
@@ -93,6 +102,7 @@ def my_predict(
         dtype (np.dtype, optional): Data type for the prediction. Defaults to np.uint8.
         save_args (dict, optional): Save arguments for the prediction. Defaults to {}.
         return_results (bool, optional): Whether to return the results. Defaults to False.
+        box_reject (float, optional): Fraction of image area to reject box predictions.
 
     Returns:
         tuple: Tuple containing masks, boxes, phrases, and logits.
@@ -198,8 +208,19 @@ def run_model(
     text_prompt="tree",
     box_reject=0.99,
 ):
-    # Generate segment anything model and use it to make masks
-    LangSAM.predict = partialmethod(my_predict, box_reject=box_reject)
+    """Generate a LangSAM segment anything geospatial model and predict on the
+    input images.
+
+    Parameters:
+    input_images: (str) Path to a directory of GeoTIFF tile images.
+    box_threshold: (float) Box threshold for the prediction.
+    text_threshold: (float) Text threshold for the prediction.
+    output_dir: (str) Output directory for the prediction mask files.
+    text_prompt: (str) Text prompt for the model.
+    box_reject: (float) Fraction of image area to reject box predictions.
+    """
+
+    LangSAM.predict = partialmethod(predict_with_box_reject, box_reject=box_reject)
     sam = LangSAM()
     sam.predict_batch(
         images=input_images,
@@ -214,46 +235,25 @@ def run_model(
     )
 
 
-def download_areas_batch(in_geojson, zoom=21, out_path="./tif_images", overwrite=True):
-    """Get a list of bounding boxes from a GeoJSON and download tif files from
-    tile map server."""
-    if overwrite is False and not is_empty(out_path):
-        done_files = glob.glob(os.path.join(out_path, "*.tif"))
-    else:
-        shutil.rmtree(out_path, ignore_errors=True)
-        os.mkdir(out_path)
-        done_files = []
-    # Open the geojson
-    with open(in_geojson) as f:
-        in_gj = geojson.load(f)
-    # Boxes are in 'features', 'properties'
-    for feature in in_gj["features"]:
-        p = feature["properties"]
-        filename = os.path.join(out_path, p["SA1_CODE21"] + ".tif")
-        bbox = [p["xmin"], p["ymin"], p["xmax"], p["ymax"]]
-        if filename in done_files:
-            print(f"Skipping {filename}")
-            continue
-        tms_to_geotiff(
-            output=filename,
-            bbox=bbox,
-            zoom=zoom,
-            source="Satellite",
-            overwrite=overwrite,
-        )
+def annotate_trees_batch(input_images, output_dir, delete_mask_raster=False, **kwargs):
+    """Run annotate_trees on a list of input GeoTIFF images.
 
-
-def annotate_trees_batch(input_images, output_dir, **kwargs):
-    """Run annotate_trees on a list of input .tiff image and collate the output
-    into output dir."""
+    Parameters:
+    input_images: (list) List of input GeoTIFF image filenames.
+    output_dir: (str) Directory to place output files.
+    delete_mask_raster: (bool) Remove the merged raster mask (in favour of the vector GeoJSON)
+    **kwargs: (dict) Keyword arguments passed to annotate_trees.
+    """
 
     for image in input_images:
-        print(f"Annotating trees in {image}")
+        print(f"Annotating {image}")
         image_filename = os.path.basename(image)
         output_basename = os.path.splitext(image_filename)[0]
         annotate_trees(
             image, output_root=os.path.join(output_dir, output_basename), **kwargs
         )
+        if delete_mask_raster:
+            os.remove(os.path.join(output_basename, "_mask.tif"))
 
 
 def annotate_trees(
@@ -267,35 +267,35 @@ def annotate_trees(
     class_dir="masks",
     cleanup=True,
     box_reject=0.99,
+    reproject=3857,
+    plot_result=False,
 ):
-    """Split up an image, Run segment anything on it and plot the result."""
+    """Tile up an image, Run segment anything geospatial on it and plot the
+    result.
 
-    # For debug, can hard code a satellite image bounding box for download from TMS.
-    sat_bbox = None
-    sat_zoom = 21
+    Parameters:
+    input_image: (str) Filename of input GeoTIFF
+    box_threshold: (float) Box threshold for the prediction.
+    output_root: (str) Root filename for outputs (None = use CWD and input filename root).
+    tile_size: (int) Size of the tiles to subdivide the input into.
+    text_prompt: (str) Text input for GroundingDINO detections.
+    overwrite: (bool) Allow overwriting of output files if they already exist.
+    tile_dir: (str) Location of directory to store tiled images.
+    class_dir: (str) Location of directory to store annotation masks for each tile.
+    cleanup: (bool) Remove tile and class directories after processing.
+    box_reject: (float) Fraction of image area to reject box predictions.
+    reproject: (int) EPSG code to reproject input before processing.
+    plot_result: (bool) Plot the derived annotations on the input TIFF as a PNG.
+    """
 
-    text_threshold = 0.24
+    text_threshold = (
+        0.24  # Hard coded for jnow - since it makes no difference for 'tree' class.
+    )
     if output_root is None:
         output_root = os.path.splitext(input_image)[0]
-    text_prompt = "tree"
-    overwrite = True  # Overwrite tiles and masks
     output_png = output_root + ".png"
     output_geojson = output_root + ".geojson"
     output_mask = output_root + "_mask.tif"
-    # SAM seems to only work with EPSG:3857 so reproject the input to that before running it.
-    reproject = 3857
-    # Plot the derived annotation mask on top of the input image
-    do_show_mask = True
-
-    # Just for hard-coded debugging for now (will overwrite input image if used.)
-    if sat_bbox is not None:
-        tms_to_geotiff(
-            output=input_image,
-            bbox=sat_bbox,
-            zoom=sat_zoom,
-            source="Satellite",
-            overwrite=True,
-        )
 
     # Ensure the input is reprojected to desired projection
     in_name, in_ext = os.path.splitext(input_image)
@@ -347,7 +347,7 @@ def annotate_trees(
         raster_to_geojson(output_mask, output_geojson)
 
     # Now a merge file will be in class_dir - lets plot it.
-    if do_show_mask:
+    if plot_result:
         if os.path.exists(output_mask):
             merge_mask_array = cv2.imread(output_mask)
         else:
@@ -368,19 +368,24 @@ def annotate_trees(
 def main(args=None):
     def create_parser():
         parser = argparse.ArgumentParser(
-            description="Detect trees in GeoTiff images using text prompt ant LangSAM model"
+            description="Detect trees in GeoTIFF images using text prompt and LangSAM model"
         )
-        parser.add_argument("image", type=str, help="Path to input image.")
+        parser.add_argument(
+            "image",
+            type=str,
+            help="Path to single input TIFF image or directory of TIFF images (if running in batch mode).",
+        )
         parser.add_argument(
             "--output_root",
+            "-o",
             type=str,
-            help="Root filename of output PNG overlays, and raster/vector masks.",
+            help="Root filename (with path if in batch mode) of output PNG overlays, and raster/vector masks.",
         )
         parser.add_argument(
             "--box_threshold",
             type=float,
             default=0.23,
-            help="Box threshold for GorundingDINO predictions from LangSAM model",
+            help="Box threshold for GroundingDINO predictions from LangSAM model",
         )
         parser.add_argument(
             "--tile_size",
@@ -392,13 +397,21 @@ def main(args=None):
 
     parser = create_parser()
     args = parser.parse_args(args)
-
-    annotate_trees(
-        args.image,
-        box_threshold=args.box_threshold,
-        output_root=args.output_root,
-        tile_size=args.tile_size,
-    )
+    if os.path.isdir(args.image):
+        # Run in batch mode if a directory.
+        annotate_trees_batch(
+            args.image,
+            args.output_root,
+            box_threshold=args.box_threshold,
+            tile_size=args.tile_size,
+        )
+    else:
+        annotate_trees(
+            args.image,
+            box_threshold=args.box_threshold,
+            output_root=args.output_root,
+            tile_size=args.tile_size,
+        )
 
 
 if __name__ == "__main__":
