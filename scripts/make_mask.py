@@ -261,6 +261,7 @@ def annotate_trees(
     box_threshold=0.23,
     output_root=None,
     tile_size=1500,
+    tile_overlap=0,
     text_prompt="tree",
     overwrite=True,
     tile_dir="tiles",
@@ -278,6 +279,7 @@ def annotate_trees(
     box_threshold: (float) Box threshold for the prediction.
     output_root: (str) Root filename for outputs (None = use CWD and input filename root).
     tile_size: (int) Size of the tiles to subdivide the input into.
+    tile_overlap: (int) Number of pixels to overlap the tiles.
     text_prompt: (str) Text input for GroundingDINO detections.
     overwrite: (bool) Allow overwriting of output files if they already exist.
     tile_dir: (str) Location of directory to store tiled images.
@@ -298,11 +300,15 @@ def annotate_trees(
     output_mask = output_root + "_mask.tif"
 
     # Ensure the input is reprojected to desired projection
-    in_name, in_ext = os.path.splitext(input_image)
-    rep_image = in_name + "_rep" + in_ext
-    in_im = rioxarray.open_rasterio(input_image)
-    rep_im = in_im.rio.reproject(reproject)
-    rep_im.rio.to_raster(rep_image, compress="DEFLATE", tiled=True)
+    # This is because the model failes on some projections.
+    if reproject is not None:
+        in_name, in_ext = os.path.splitext(input_image)
+        rep_image = in_name + "_rep" + in_ext
+        in_im = rioxarray.open_rasterio(input_image)
+        rep_im = in_im.rio.reproject(reproject)
+        rep_im.rio.to_raster(rep_image, compress="DEFLATE", tiled=True)
+    else:
+        rep_image = input_image
     image_array = cv2.imread(rep_image)
 
     print(
@@ -323,7 +329,7 @@ def annotate_trees(
         shutil.rmtree(class_dir, ignore_errors=True)
 
     # Retile the input image (always square tiles for now)
-    split_raster(rep_image, out_dir=tile_dir, tile_size=tile_size, overlap=50)
+    split_raster(rep_image, out_dir=tile_dir, tile_size=tile_size, overlap=0)
     tile_dir_list = glob.glob(os.path.join(tile_dir, "*"))
     tile_size = cv2.imread(tile_dir_list[0]).shape
     print(
@@ -358,11 +364,13 @@ def annotate_trees(
         )
 
     if cleanup:
-        # Delete the reprojected image
-        os.remove(rep_image)
         # Delete the tiles and class dirs
         shutil.rmtree(tile_dir, ignore_errors=True)
         shutil.rmtree(class_dir, ignore_errors=True)
+
+    if reproject is not None:
+        # Delete the reprojected image
+        os.remove(rep_image)
 
 
 def main(args=None):
@@ -393,6 +401,12 @@ def main(args=None):
             default=1500,
             help="Size of tiles in pixels to split images into before annotating",
         )
+        parser.add_argument(
+            "--tile_overlap",
+            type=int,
+            default=0,
+            help="Number of pixels to overlap the tiles.",
+        )
         return parser
 
     parser = create_parser()
@@ -404,6 +418,7 @@ def main(args=None):
             args.output_root,
             box_threshold=args.box_threshold,
             tile_size=args.tile_size,
+            tile_overlap=args.tile_overlap,
         )
     else:
         annotate_trees(
@@ -411,6 +426,7 @@ def main(args=None):
             box_threshold=args.box_threshold,
             output_root=args.output_root,
             tile_size=args.tile_size,
+            tile_overlap=args.tile_overlap,
         )
 
 
