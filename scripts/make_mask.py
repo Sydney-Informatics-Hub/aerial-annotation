@@ -16,7 +16,7 @@ import torch
 from matplotlib import pylab as plt
 from PIL import Image
 from samgeo import split_raster, tms_to_geotiff
-from samgeo.common import raster_to_geojson
+from samgeo.common import raster_to_geojson, download_file
 from samgeo.text_sam import LangSAM, array_to_image
 
 
@@ -192,8 +192,8 @@ def my_predict(
 
 def run_model(
     input_images,
-    bt=0.23,
-    tt=0.24,
+    box_threshold=0.23,
+    text_threshold=0.24,
     output_dir="masks",
     text_prompt="tree",
     box_reject=0.99,
@@ -205,8 +205,8 @@ def run_model(
         images=input_images,
         out_dir=output_dir,
         text_prompt=text_prompt,
-        box_threshold=bt,
-        text_threshold=tt,
+        box_threshold=box_threshold,
+        text_threshold=text_threshold,
         mask_multiplier=255,
         dtype="uint8",
         merge=True,
@@ -258,7 +258,7 @@ def annotate_trees_batch(input_images, output_dir, **kwargs):
 
 def annotate_trees(
     input_image,
-    b_thresh=0.23,
+    box_threshold=0.23,
     output_root=None,
     tile_size=1500,
     text_prompt="tree",
@@ -274,7 +274,7 @@ def annotate_trees(
     sat_bbox = None
     sat_zoom = 21
 
-    tt = 0.24
+    text_threshold = 0.24
     if output_root is None:
         output_root = os.path.splitext(input_image)[0]
     text_prompt = "tree"
@@ -333,8 +333,8 @@ def annotate_trees(
     # Now we have our tiles, generate the segment anything classification
     run_model(
         tile_dir,
-        bt=b_thresh,
-        tt=tt,
+        box_threshold=box_threshold,
+        text_threshold=text_threshold,
         output_dir=class_dir,
         text_prompt=text_prompt,
         box_reject=box_reject,
@@ -395,7 +395,7 @@ def main(args=None):
 
     annotate_trees(
         args.image,
-        b_thresh=args.box_threshold,
+        box_threshold=args.box_threshold,
         output_root=args.output_root,
         tile_size=args.tile_size,
     )
