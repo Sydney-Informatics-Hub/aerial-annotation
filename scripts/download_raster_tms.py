@@ -21,7 +21,7 @@ def is_empty(path):
         return True
 
 
-def download_areas_batch(in_geojson, zoom=21, out_path="./tif_images", overwrite=True):
+def download_areas_batch(in_geojson, zoom=21, out_path="./tif_images", out_s3_path=None, overwrite=True):
     """Get a list of bounding boxes from a GeoJSON and download tif files from
     tile map server."""
     if overwrite is False and not is_empty(out_path):
@@ -48,3 +48,7 @@ def download_areas_batch(in_geojson, zoom=21, out_path="./tif_images", overwrite
             source="Satellite",
             overwrite=overwrite,
         )
+        if out_s3_path is not None:
+            cmd = f'mv {filename} {out_s3_path}'
+            print(cmd)
+            os.system(cmd)
