@@ -267,7 +267,7 @@ def annotate_trees(
     tile_dir="tiles",
     class_dir="masks",
     cleanup=True,
-    box_reject=0.99,
+    box_reject=0.95,
     reproject=3857,
     plot_result=False,
 ):
@@ -407,6 +407,12 @@ def main(args=None):
             default=0,
             help="Number of pixels to overlap the tiles.",
         )
+        parser.add_argument(
+            "--box-reject",
+            type=float,
+            default=0.95,
+            help="Reject predicted boxes with this fraction of the input tile area.",
+        )
         return parser
 
     parser = create_parser()
@@ -419,6 +425,7 @@ def main(args=None):
             box_threshold=args.box_threshold,
             tile_size=args.tile_size,
             tile_overlap=args.tile_overlap,
+            box_reject=args.box_reject,
         )
     else:
         annotate_trees(
@@ -427,6 +434,7 @@ def main(args=None):
             output_root=args.output_root,
             tile_size=args.tile_size,
             tile_overlap=args.tile_overlap,
+            box_reject=args.box_reject,
         )
 
 
