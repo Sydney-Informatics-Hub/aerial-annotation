@@ -63,7 +63,10 @@ class SA1Image:
             sa1_gdf (GeoDataFrame): GeoDataFrame containing a single SA1 data including the bounding box of the polygon.
             zoom_level (int): Zoom level for map tiles.
         """
-        self.sa1_code = sa1_gdf.iloc[0]["SA1_CODE21"]
+        try:
+            self.sa1_code = sa1_gdf.iloc[0]["SA1_CODE21"]
+        except KeyError:
+            self.sa1_code = sa1_gdf.iloc[0]["id"]
         self.polygon = sa1_gdf
         self.sa1_bbox = [
             sa1_gdf.iloc[0]["xmin"],
@@ -278,7 +281,7 @@ class SA1Image:
         print(f"Saved osm buildings to {file_name}")
 
     def save_as_full_geotiff(
-        self, output_folder: str = "test", file_name: str = ""
+        self, output_folder: str = "test", file_name: str = "", move_to_folder: str = ""
     ) -> None:
         """Save the entire stitched image as a GeoTIFF file with geospatial
         information.
@@ -326,6 +329,11 @@ class SA1Image:
         ) as dst:
             for i in range(image_array.shape[2]):
                 dst.write(image_array[:, :, i], i + 1)
+
+        if move_to_folder:
+            cmd = f"mv {output_filepath} {move_to_folder}"
+            print(cmd)
+            os.system(cmd)
 
     def save_as_sa1_geotiff(
         self, output_folder: str = "test", file_name: str = ""

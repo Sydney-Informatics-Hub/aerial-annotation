@@ -7,7 +7,7 @@ import geopandas as gpd
 from sa1 import SA1Image
 
 
-def download(sa1_list, nsw_gdf, output_folder: str):
+def download_sa1(sa1_list, nsw_gdf, output_folder: str):
     for sa1 in sa1_list:
         print(sa1)
         sa1_gdf = nsw_gdf[nsw_gdf["SA1_CODE21"] == sa1]
@@ -17,7 +17,21 @@ def download(sa1_list, nsw_gdf, output_folder: str):
             # sa1_image.save_as_sa1_geotiff(output_folder=f"{output_folder}_sa1_only")
 
 
-def main():
+def download_grid(id_list, nsw_gdf, output_folder: str):
+    for id in id_list:
+        print(id)
+        sa1_gdf = nsw_gdf[nsw_gdf["id"] == id]
+        if not sa1_gdf.empty:
+            sa1_image = SA1Image(sa1_gdf, 21)
+            # sa1_image.save_as_full_geotiff(output_folder=f"{output_folder}_full")
+            # sa1_image.save_as_sa1_geotiff(output_folder=f"{output_folder}_sa1_only")
+            sa1_image.save_as_full_geotiff(
+                output_folder=output_folder,
+                move_to_folder="~/DATA/sixmaps_raster/greater_sydney_grid",
+            )
+
+
+def main_sa1():
     # shapefile_path = "../data/SA1_2021_AUST_SHP_GDA2020/SA1_2021_AUST_GDA2020.shp"
     # gdf = gpd.read_file(shapefile_path)
     # print(gdf.crs)
@@ -62,7 +76,7 @@ def main():
             with open(file_path, "r") as file:
                 sa1_list = file.read().split("\n")
 
-            download(
+            download_sa1(
                 sa1_list,
                 nsw_gdf=nsw_gdf,
                 output_folder=os.path.join(
@@ -71,5 +85,35 @@ def main():
             )
 
 
+def main_id():
+    # Don't download rasters that is already downloaded, so find them first and remove from nsw_gdf
+
+    extracted_id = set()
+
+    # for root, dirs, files in os.walk(root_directory):
+    #     for files in dirs:
+    #         dir_path = os.path.join(root, dir)
+    #         for file in os.listdir(dir_path):
+    #             extracted_sa1.add(file.split("_")[0])
+
+    # sa1 with building annotations over 10%
+    nsw_gdf = gpd.read_file("~/10percent_grid_rectangles.geojson")
+    nsw_gdf = nsw_gdf[~nsw_gdf["id"].isin(extracted_id)]
+    nsw_gdf.rename(
+        columns={"left": "xmin", "right": "xmax", "bottom": "ymin", "top": "ymax"},
+        inplace=True,
+    )
+
+    id_list = nsw_gdf["id"].tolist()
+
+    download_grid(
+        id_list,
+        nsw_gdf=nsw_gdf,
+        output_folder="./temp/",
+    )
+
+    os.system("rm ./temp/")
+
+
 if __name__ == "__main__":
-    main()
+    main_id()
