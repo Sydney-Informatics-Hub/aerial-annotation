@@ -381,13 +381,14 @@ def main(args=None):
         parser.add_argument(
             "image",
             type=str,
+            nargs="+",
             help="Path to single input TIFF image or directory of TIFF images (if running in batch mode).",
         )
         parser.add_argument(
             "--output_root",
             "-o",
             type=str,
-            help="Root filename (with path if in batch mode) of output PNG overlays, and raster/vector masks.",
+            help="Root filename (or path if in batch mode) of output PNG overlays, and raster/vector masks.",
         )
         parser.add_argument(
             "--box_threshold",
@@ -413,12 +414,17 @@ def main(args=None):
             default=0.95,
             help="Reject predicted boxes with this fraction of the input tile area.",
         )
+        parser.add_argument(
+            "--plot_overlay",
+            action="store_true",
+            help="Plot the annotation mask onto the input image as a PNG.",
+        )
         return parser
 
     parser = create_parser()
     args = parser.parse_args(args)
-    if os.path.isdir(args.image):
-        # Run in batch mode if a directory.
+    if len(args.image) > 1:
+        # Run in batch mode
         annotate_trees_batch(
             args.image,
             args.output_root,
@@ -426,15 +432,17 @@ def main(args=None):
             tile_size=args.tile_size,
             tile_overlap=args.tile_overlap,
             box_reject=args.box_reject,
+            plot_result=args.plot_overlay,
         )
     else:
         annotate_trees(
-            args.image,
+            args.image[0],
             box_threshold=args.box_threshold,
             output_root=args.output_root,
             tile_size=args.tile_size,
             tile_overlap=args.tile_overlap,
             box_reject=args.box_reject,
+            plot_result=args.plot_overlay,
         )
 
 
