@@ -21,14 +21,7 @@ from samgeo.text_sam import LangSAM, array_to_image
 
 def is_empty(path):
     """Check if specified path is a valid and empty dir."""
-    if os.path.exists(path) and not os.path.isfile(path):
-        # Checking if the directory is empty or not
-        if not os.listdir(path):
-            return True
-        else:
-            return False
-    else:
-        return True
+    return os.path.isdir(path) and not os.listdir(path)
 
 
 def show_mask(
@@ -211,6 +204,20 @@ def run_model(
     """Generate a LangSAM segment anything geospatial model and predict on the
     input images.
 
+    The parameters `box_threshold` and `test_threshold` control the GroundingDINO
+    detection thresholds for the input image.
+    See: https://github.com/IDEA-Research/GroundingDINO
+
+    `box_threshold` specifies the sensitivity of object detection in the image.
+    Higher values make the model more selective, identifying only the most
+    confident object instances. The default value of 0.23 was chosen via visual
+    verification of 'tree' detections in OMS aerial imagery at zoom=21.
+
+    `text_threshold` associates the detected objects with the text prompt, higher
+    values require stronger probability that a detected object is associated.
+    For text_prompt='tree', the value of text_threshold makes no difference to
+    the resulting detections so we use the model default value of 0.24.
+
     Parameters:
     input_images: (str) Path to a directory of GeoTIFF tile images.
     box_threshold: (float) Box threshold for the prediction.
@@ -290,9 +297,9 @@ def annotate_trees(
     plot_result: (bool) Plot the derived annotations on the input TIFF as a PNG.
     """
 
-    text_threshold = (
-        0.24  # Hard coded for jnow - since it makes no difference for 'tree' class.
-    )
+    # Hard code `text_threshold` for now
+    # since it makes no difference for 'tree' class.
+    text_threshold = 0.24
     if output_root is None:
         output_root = os.path.splitext(input_image)[0]
     output_png = output_root + ".png"
