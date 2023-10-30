@@ -269,7 +269,9 @@ class SA1Image:
 
         return round(buildings_area / sa1_area, 2) * 100  # returning percentage
 
-    def save_osm_buildings_geojson(self, file_name: str = "") -> None:
+    def save_osm_buildings_geojson(
+        self, file_name: str = "", move_to_folder: str = ""
+    ) -> None:
         """Save OSM building annotations as a GeoJSON file.
 
         Args:
@@ -278,7 +280,12 @@ class SA1Image:
         if not file_name:
             file_name == f"buildings_within_sa1_{self.sa1_code}.geojson"
         self.buildings.to_file(file_name, driver="GeoJSON")
-        print(f"Saved osm buildings to {file_name}")
+
+        if move_to_folder:
+            cmd = f"mv {file_name} {move_to_folder}"
+            print(cmd)
+            os.system(cmd)
+        print(f"Saved osm buildings to {os.path.join(move_to_folder,file_name)}")
 
     def save_as_full_geotiff(
         self, output_folder: str = "test", file_name: str = "", move_to_folder: str = ""

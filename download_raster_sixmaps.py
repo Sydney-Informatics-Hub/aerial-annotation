@@ -115,5 +115,26 @@ def main_id():
     os.system("rm ./temp/")
 
 
+def download_grid_building_ann():
+    nsw_gdf = gpd.read_file("./10percent_grid_rectangles.geojson")
+
+    nsw_gdf.rename(
+        columns={"left": "xmin", "right": "xmax", "bottom": "ymin", "top": "ymax"},
+        inplace=True,
+    )
+
+    id_list = nsw_gdf["id"].tolist()
+    output_folder = ""
+    # output_folder = "~/DATA/annotation_data/osm_building_annotations_by_10_percent_grid"
+    for id in id_list:
+        print(id)
+        gdf = nsw_gdf[nsw_gdf["id"] == id]
+        if not gdf.empty:
+            grid_image = SA1Image(gdf, 21)
+            grid_image.save_osm_buildings_geojson(
+                f"{grid_image.sa1_code}_buildings.geojson", output_folder
+            )
+
+
 if __name__ == "__main__":
-    main_id()
+    download_grid_building_ann()
