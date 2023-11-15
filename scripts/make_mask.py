@@ -68,7 +68,8 @@ def predict_with_box_reject(
     save_args={},
     return_results=False,
     return_coords=False,
-    box_reject=1.1,
+    box_reject=0.85,
+    high_thresh=0.36,
     **kwargs,
 ):
     """Run both GroundingDINO and SAM model prediction on a single image.
@@ -139,8 +140,12 @@ def predict_with_box_reject(
             keep_b.append(this_b)
             keep_l.append(this_l)
             keep_p.append(this_p)
+        elif this_l > high_thresh:
+            keep_b.append(this_b)
+            keep_l.append(this_l)
+            keep_p.append(this_p)
         else:
-            print(f"rejected box {this_b}, size: {this_area}, max_size: {max_area}")
+            print(f"rejected box {this_b}, size: {this_area}, max_size: {max_area}, logit: {this_l}")
     if len(keep_b) > 0:
         boxes, logits, phrases = (torch.stack(keep_b), torch.stack(keep_l), keep_p)
     masks = torch.tensor([])
@@ -178,9 +183,9 @@ def predict_with_box_reject(
     self.phrases = phrases
     self.logits = logits
     self.prediction = mask_overlay
-    # png_anns = os.path.splitext(output)[0]
-    # print(f'Saving boxes to: {png_anns}')
-    # self.show_anns(output=png_anns)
+    png_anns = os.path.splitext(output)[0]
+    print(f'Saving boxes to: {png_anns}')
+    self.show_anns(output=png_anns)
 
     if return_results:
         return masks, boxes, phrases, logits
@@ -191,6 +196,91 @@ def predict_with_box_reject(
             box = box.cpu().numpy()
             boxlist.append((box[0], box[1]))
         return boxlist
+
+
+def my_show_anns(
+        self,
+        figsize=(12, 10),
+        axis="off",
+        cmap="viridis",
+        alpha=0.4,
+        add_boxes=True,
+        box_color="r",
+        box_linewidth=1,
+        title=None,
+        output=None,
+        blend=True,
+        **kwargs,
+    ):
+        """Show the annotations (objects with random color) on the input image.
+
+        Args:
+            figsize (tuple, optional): The figure size. Defaults to (12, 10).
+            axis (str, optional): Whether to show the axis. Defaults to "off".
+            cmap (str, optional): The colormap for the annotations. Defaults to "viridis".
+            alpha (float, optional): The alpha value for the annotations. Defaults to 0.4.
+            add_boxes (bool, optional): Whether to show the bounding boxes. Defaults to True.
+            box_color (str, optional): The color for the bounding boxes. Defaults to "r".
+            box_linewidth (int, optional): The line width for the bounding boxes. Defaults to 1.
+            title (str, optional): The title for the image. Defaults to None.
+            output (str, optional): The path to the output image. Defaults to None.
+            blend (bool, optional): Whether to show the input image. Defaults to True.
+            kwargs (dict, optional): Additional arguments for matplotlib.pyplot.savefig().
+        """
+
+        import warnings
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+
+        warnings.filterwarnings("ignore")
+
+        anns = self.prediction
+
+        if anns is None:
+            print("Please run predict() first.")
+            return
+        elif len(anns) == 0:
+            print("No objects found in the image.")
+            return
+
+        plt.figure(figsize=figsize)
+        plt.imshow(self.image)
+
+        if add_boxes:
+            for box, phrases, logit in zip(self.boxes, self.phrases, self.logits):
+                # Draw bounding box
+                box = box.cpu().numpy()  # Convert the tensor to a numpy array
+                rect = patches.Rectangle(
+                    (box[0], box[1]),
+                    box[2] - box[0],
+                    box[3] - box[1],
+                    linewidth=box_linewidth,
+                    edgecolor=box_color,
+                    facecolor="none",
+                )
+                plt.gca().add_patch(rect)
+                if phrases == '':
+                    phrases = 'None'
+                lab = f'{phrases}: {logit:.2f}'
+                plt.gca().text(box[0], box[3], lab, color='red')
+
+        if "dpi" not in kwargs:
+            kwargs["dpi"] = 100
+
+        if "bbox_inches" not in kwargs:
+            kwargs["bbox_inches"] = "tight"
+
+        plt.imshow(anns, cmap=cmap, alpha=alpha)
+
+        if title is not None:
+            plt.title(title)
+        plt.axis(axis)
+
+        if output is not None:
+            if blend:
+                plt.savefig(output, **kwargs)
+            else:
+                array_to_image(self.prediction, output, self.source)
 
 
 def run_model(
@@ -228,6 +318,7 @@ def run_model(
     """
 
     LangSAM.predict = partialmethod(predict_with_box_reject, box_reject=box_reject)
+    LangSAM.show_anns = my_show_anns
     sam = LangSAM()
     sam.predict_batch(
         images=input_images,
@@ -273,8 +364,8 @@ def annotate_trees(
     overwrite=True,
     tile_dir="tiles",
     class_dir="masks",
-    cleanup=True,
-    box_reject=0.95,
+    cleanup=False,
+    box_reject=0.85,
     reproject=3857,
     plot_result=False,
 ):
@@ -418,7 +509,7 @@ def main(args=None):
         parser.add_argument(
             "--box-reject",
             type=float,
-            default=0.95,
+            default=0.8,
             help="Reject predicted boxes with this fraction of the input tile area.",
         )
         parser.add_argument(
