@@ -290,6 +290,7 @@ def run_model(
     output_dir="masks",
     text_prompt="tree",
     box_reject=0.99,
+    high_box_threshold=0.0,
 ):
     """Generate a LangSAM segment anything geospatial model and predict on the
     input images.
@@ -315,9 +316,10 @@ def run_model(
     output_dir: (str) Output directory for the prediction mask files.
     text_prompt: (str) Text prompt for the model.
     box_reject: (float) Fraction of image area to reject box predictions.
+    high_box_threshold: (float) Box threshold for boxes larger than box-reject.
     """
 
-    LangSAM.predict = partialmethod(predict_with_box_reject, box_reject=box_reject)
+    LangSAM.predict = partialmethod(predict_with_box_reject, box_reject=box_reject, high_thresh=high_box_threshold)
     LangSAM.show_anns = my_show_anns
     sam = LangSAM()
     sam.predict_batch(
@@ -368,6 +370,7 @@ def annotate_trees(
     box_reject=0.85,
     reproject=3857,
     plot_result=False,
+    high_box_threshold=0.0,
 ):
     """Tile up an image, Run segment anything geospatial on it and plot the
     result.
@@ -386,6 +389,7 @@ def annotate_trees(
     box_reject: (float) Fraction of image area to reject box predictions.
     reproject: (int) EPSG code to reproject input before processing.
     plot_result: (bool) Plot the derived annotations on the input TIFF as a PNG.
+    high_box_threshold: (float) Box threshold for boxes larger than box-reject.
     """
 
     # Hard code `text_threshold` for now
@@ -442,6 +446,7 @@ def annotate_trees(
         output_dir=class_dir,
         text_prompt=text_prompt,
         box_reject=box_reject,
+        high_box_threshold=high_box_threshold,
     )
 
     # Output mask is in merged.tif raster - convert to geojson.
@@ -483,25 +488,25 @@ def main(args=None):
             help="Path to single input TIFF image or directory of TIFF images (if running in batch mode).",
         )
         parser.add_argument(
-            "--output_root",
+            "--output-root",
             "-o",
             type=str,
             help="Root filename (or path if in batch mode) of output PNG overlays, and raster/vector masks.",
         )
         parser.add_argument(
-            "--box_threshold",
+            "--box-threshold",
             type=float,
             default=0.23,
             help="Box threshold for GroundingDINO predictions from LangSAM model",
         )
         parser.add_argument(
-            "--tile_size",
+            "--tile-size",
             type=int,
             default=1500,
             help="Size of tiles in pixels to split images into before annotating",
         )
         parser.add_argument(
-            "--tile_overlap",
+            "--tile-overlap",
             type=int,
             default=0,
             help="Number of pixels to overlap the tiles.",
@@ -513,7 +518,13 @@ def main(args=None):
             help="Reject predicted boxes with this fraction of the input tile area.",
         )
         parser.add_argument(
-            "--plot_overlay",
+            "--high-box-threshold",
+            type=float,
+            default=0.0,
+            help="Box threshold for boxes larger than box-reject."
+        )
+        parser.add_argument(
+            "--plot-overlay",
             action="store_true",
             help="Plot the annotation mask onto the input image as a PNG.",
         )
@@ -531,6 +542,7 @@ def main(args=None):
             tile_overlap=args.tile_overlap,
             box_reject=args.box_reject,
             plot_result=args.plot_overlay,
+            high_box_threshold=args.high_box_threshold,
         )
     else:
         annotate_trees(
@@ -541,6 +553,7 @@ def main(args=None):
             tile_overlap=args.tile_overlap,
             box_reject=args.box_reject,
             plot_result=args.plot_overlay,
+            high_box_threshold=args.high_box_threshold,
         )
 
 
