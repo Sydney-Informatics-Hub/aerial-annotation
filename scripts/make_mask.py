@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+import gc
 import glob
 import os
 import shutil
@@ -333,6 +334,8 @@ def run_model(
         merge=True,
         verbose=True,
     )
+    del sam
+    gc.collect()
 
 
 def annotate_trees_batch(input_images, output_dir, delete_mask_raster=False, **kwargs):
@@ -404,8 +407,8 @@ def annotate_trees(
     # Ensure the input is reprojected to desired projection
     # This is because the model failes on some projections.
     if reproject is not None:
-        in_name, in_ext = os.path.splitext(input_image)
-        rep_image = in_name + "_rep" + in_ext
+        _, in_ext = os.path.splitext(input_image)
+        rep_image = output_root + "_rep" + in_ext
         in_im = rioxarray.open_rasterio(input_image)
         rep_im = in_im.rio.reproject(reproject)
         rep_im.rio.to_raster(rep_image, compress="DEFLATE", tiled=True)
