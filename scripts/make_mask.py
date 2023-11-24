@@ -48,7 +48,7 @@ def show_mask(
     mask_arr = np.ma.masked_where(mask_arr == 0, mask_arr)
     plt.imshow(mask_arr, alpha=alpha, cmap=cmap, vmin=0, vmax=255)
     if edges:
-        plt.contour(mask[:, :, 0], [254], colors=[edge_colour])
+        plt.contour(mask[:, :, 0], [0], colors=[edge_colour])
     if output:
         plt.savefig(output)
     else:
@@ -64,7 +64,7 @@ def predict_with_box_reject(
     box_threshold,
     text_threshold,
     output=None,
-    mask_multiplier=255,
+    mask_multiplier=1,
     dtype=np.uint8,
     save_args={},
     return_results=False,
@@ -146,7 +146,9 @@ def predict_with_box_reject(
             keep_l.append(this_l)
             keep_p.append(this_p)
         else:
-            print(f"rejected box {this_b}, size: {this_area}, max_size: {max_area}, logit: {this_l}")
+            print(
+                f"rejected box {this_b}, size: {this_area}, max_size: {max_area}, logit: {this_l}"
+            )
     if len(keep_b) > 0:
         boxes, logits, phrases = (torch.stack(keep_b), torch.stack(keep_l), keep_p)
     masks = torch.tensor([])
@@ -154,15 +156,14 @@ def predict_with_box_reject(
         masks = self.predict_sam(image_pil, boxes)
         masks = masks.squeeze(1)
 
+    # Create an empty image to store the mask overlays
+    mask_overlay = np.zeros_like(
+        image_np[..., 0], dtype=dtype
+    )  # Adjusted for single channel
+
     if boxes.nelement() == 0:  # No "object" instances found
         print("No objects found in the image.")
-        return
     else:
-        # Create an empty image to store the mask overlays
-        mask_overlay = np.zeros_like(
-            image_np[..., 0], dtype=dtype
-        )  # Adjusted for single channel
-
         for i, (box, mask) in enumerate(zip(boxes, masks)):
             # Convert tensor to numpy array if necessary and ensure it contains integers
             if isinstance(mask, torch.Tensor):
@@ -184,9 +185,9 @@ def predict_with_box_reject(
     self.phrases = phrases
     self.logits = logits
     self.prediction = mask_overlay
-    png_anns = os.path.splitext(output)[0]
-    print(f'Saving boxes to: {png_anns}')
-    self.show_anns(output=png_anns)
+    # png_anns = os.path.splitext(output)[0]
+    # print(f'Saving boxes to: {png_anns}')
+    # self.show_anns(output=png_anns)
 
     if return_results:
         return masks, boxes, phrases, logits
@@ -200,88 +201,89 @@ def predict_with_box_reject(
 
 
 def my_show_anns(
-        self,
-        figsize=(12, 10),
-        axis="off",
-        cmap="viridis",
-        alpha=0.4,
-        add_boxes=True,
-        box_color="r",
-        box_linewidth=1,
-        title=None,
-        output=None,
-        blend=True,
-        **kwargs,
-    ):
-        """Show the annotations (objects with random color) on the input image.
+    self,
+    figsize=(12, 10),
+    axis="off",
+    cmap="viridis",
+    alpha=0.4,
+    add_boxes=True,
+    box_color="r",
+    box_linewidth=1,
+    title=None,
+    output=None,
+    blend=True,
+    **kwargs,
+):
+    """Show the annotations (objects with random color) on the input image.
 
-        Args:
-            figsize (tuple, optional): The figure size. Defaults to (12, 10).
-            axis (str, optional): Whether to show the axis. Defaults to "off".
-            cmap (str, optional): The colormap for the annotations. Defaults to "viridis".
-            alpha (float, optional): The alpha value for the annotations. Defaults to 0.4.
-            add_boxes (bool, optional): Whether to show the bounding boxes. Defaults to True.
-            box_color (str, optional): The color for the bounding boxes. Defaults to "r".
-            box_linewidth (int, optional): The line width for the bounding boxes. Defaults to 1.
-            title (str, optional): The title for the image. Defaults to None.
-            output (str, optional): The path to the output image. Defaults to None.
-            blend (bool, optional): Whether to show the input image. Defaults to True.
-            kwargs (dict, optional): Additional arguments for matplotlib.pyplot.savefig().
-        """
+    Args:
+        figsize (tuple, optional): The figure size. Defaults to (12, 10).
+        axis (str, optional): Whether to show the axis. Defaults to "off".
+        cmap (str, optional): The colormap for the annotations. Defaults to "viridis".
+        alpha (float, optional): The alpha value for the annotations. Defaults to 0.4.
+        add_boxes (bool, optional): Whether to show the bounding boxes. Defaults to True.
+        box_color (str, optional): The color for the bounding boxes. Defaults to "r".
+        box_linewidth (int, optional): The line width for the bounding boxes. Defaults to 1.
+        title (str, optional): The title for the image. Defaults to None.
+        output (str, optional): The path to the output image. Defaults to None.
+        blend (bool, optional): Whether to show the input image. Defaults to True.
+        kwargs (dict, optional): Additional arguments for matplotlib.pyplot.savefig().
+    """
 
-        import warnings
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as patches
+    import warnings
 
-        warnings.filterwarnings("ignore")
+    import matplotlib.patches as patches
+    import matplotlib.pyplot as plt
 
-        anns = self.prediction
+    warnings.filterwarnings("ignore")
 
-        if anns is None:
-            print("Please run predict() first.")
-            return
-        elif len(anns) == 0:
-            print("No objects found in the image.")
-            return
+    anns = self.prediction
 
-        plt.figure(figsize=figsize)
-        plt.imshow(self.image)
+    if anns is None:
+        print("Please run predict() first.")
+        return
+    elif len(anns) == 0:
+        print("No objects found in the image.")
+        return
 
-        if add_boxes:
-            for box, phrases, logit in zip(self.boxes, self.phrases, self.logits):
-                # Draw bounding box
-                box = box.cpu().numpy()  # Convert the tensor to a numpy array
-                rect = patches.Rectangle(
-                    (box[0], box[1]),
-                    box[2] - box[0],
-                    box[3] - box[1],
-                    linewidth=box_linewidth,
-                    edgecolor=box_color,
-                    facecolor="none",
-                )
-                plt.gca().add_patch(rect)
-                if phrases == '':
-                    phrases = 'None'
-                lab = f'{phrases}: {logit:.2f}'
-                plt.gca().text(box[0], box[3], lab, color='red')
+    plt.figure(figsize=figsize)
+    plt.imshow(self.image)
 
-        if "dpi" not in kwargs:
-            kwargs["dpi"] = 100
+    if add_boxes:
+        for box, phrases, logit in zip(self.boxes, self.phrases, self.logits):
+            # Draw bounding box
+            box = box.cpu().numpy()  # Convert the tensor to a numpy array
+            rect = patches.Rectangle(
+                (box[0], box[1]),
+                box[2] - box[0],
+                box[3] - box[1],
+                linewidth=box_linewidth,
+                edgecolor=box_color,
+                facecolor="none",
+            )
+            plt.gca().add_patch(rect)
+            if phrases == "":
+                phrases = "None"
+            lab = f"{phrases}: {logit:.2f}"
+            plt.gca().text(box[0], box[3], lab, color="red")
 
-        if "bbox_inches" not in kwargs:
-            kwargs["bbox_inches"] = "tight"
+    if "dpi" not in kwargs:
+        kwargs["dpi"] = 100
 
-        plt.imshow(anns, cmap=cmap, alpha=alpha)
+    if "bbox_inches" not in kwargs:
+        kwargs["bbox_inches"] = "tight"
 
-        if title is not None:
-            plt.title(title)
-        plt.axis(axis)
+    plt.imshow(anns, cmap=cmap, alpha=alpha)
 
-        if output is not None:
-            if blend:
-                plt.savefig(output, **kwargs)
-            else:
-                array_to_image(self.prediction, output, self.source)
+    if title is not None:
+        plt.title(title)
+    plt.axis(axis)
+
+    if output is not None:
+        if blend:
+            plt.savefig(output, **kwargs)
+        else:
+            array_to_image(self.prediction, output, self.source)
 
 
 def run_model(
@@ -320,7 +322,9 @@ def run_model(
     high_box_threshold: (float) Box threshold for boxes larger than box-reject.
     """
 
-    LangSAM.predict = partialmethod(predict_with_box_reject, box_reject=box_reject, high_thresh=high_box_threshold)
+    LangSAM.predict = partialmethod(
+        predict_with_box_reject, box_reject=box_reject, high_thresh=high_box_threshold
+    )
     LangSAM.show_anns = my_show_anns
     sam = LangSAM()
     sam.predict_batch(
@@ -329,9 +333,9 @@ def run_model(
         text_prompt=text_prompt,
         box_threshold=box_threshold,
         text_threshold=text_threshold,
-        mask_multiplier=255,
+        mask_multiplier=1,
         dtype="uint8",
-        merge=True,
+        merge=False,
         verbose=True,
     )
     del sam
@@ -359,6 +363,62 @@ def annotate_trees_batch(input_images, output_dir, delete_mask_raster=False, **k
             os.remove(os.path.join(output_basename, "_mask.tif"))
 
 
+def merge_mask(tile_files, template, output):
+    """Merge the tiles tile_files onto the grid defined by template."""
+
+    # Get metadata and shape of template
+    temp_rio = rasterio.open(template)
+    temp_meta = temp_rio.meta
+    output_shape = (
+        temp_meta["height"],
+        temp_meta["width"],
+    )
+    output_mask = np.zeros(output_shape, dtype=np.uint8)
+    scratch_mask = np.zeros(output_shape, dtype=np.uint8)
+    weight_mask = np.zeros(output_shape, dtype=np.uint8)
+
+    for mask_file in tile_files:
+        tile_rio = rasterio.open(mask_file)
+        tile_data = tile_rio.read()[0]
+        tile_meta = tile_rio.meta
+        rep_kwargs = {
+            "src_transform": tile_meta["transform"],
+            "dst_transform": temp_meta["transform"],
+            "src_crs": tile_meta["crs"],
+            "dst_crs": temp_meta["crs"],
+            "dst_nodata": 0,
+            "destination": scratch_mask,
+        }
+        # Regrid tile onto accum_mask
+        rasterio.warp.reproject(tile_data, **rep_kwargs)
+        output_mask += scratch_mask
+        # sum onto weight mask
+        tile_weight = np.ones_like(tile_data)
+        rasterio.warp.reproject(tile_weight, **rep_kwargs)
+        weight_mask += scratch_mask
+
+    out_mask = np.where(output_mask / weight_mask > 0.5, 255, 0)
+    # plt.imshow(weight_mask)
+    # plt.show()
+    # plt.imshow(output_mask)
+    # plt.show()
+    # plt.imshow(out_mask)
+    # plt.show()
+    with rasterio.open(
+        output,
+        "w",
+        driver="GTiff",
+        width=output_shape[1],
+        height=output_shape[0],
+        count=1,
+        dtype=np.uint8,
+        nodata=0,
+        transform=temp_meta["transform"],
+        crs=temp_meta["crs"],
+    ) as dst:
+        dst.write(out_mask, indexes=1)
+
+
 def annotate_trees(
     input_image,
     box_threshold=0.23,
@@ -371,7 +431,7 @@ def annotate_trees(
     class_dir="masks",
     cleanup=False,
     box_reject=0.85,
-    reproject=3857,
+    reproject=None,
     plot_result=False,
     high_box_threshold=0.0,
 ):
@@ -452,10 +512,14 @@ def annotate_trees(
         high_box_threshold=high_box_threshold,
     )
 
+    # Merge tiles into a single output
+    mask_dir_list = glob.glob(os.path.join(class_dir, "*.tif"))
+    merge_mask(mask_dir_list, input_image, output_mask)
+
     # Output mask is in merged.tif raster - convert to geojson.
-    merged_mask = os.path.join(class_dir, "merged.tif")
-    if os.path.exists(merged_mask):
-        os.rename(merged_mask, output_mask)
+    # merged_mask = os.path.join(class_dir, "merged.tif")
+    if os.path.exists(output_mask):
+        #        os.rename(merged_mask, output_mask)
         raster_to_geojson(output_mask, output_geojson)
 
     # Now a merge file will be in class_dir - lets plot it.
@@ -524,7 +588,7 @@ def main(args=None):
             "--high-box-threshold",
             type=float,
             default=0.0,
-            help="Box threshold for boxes larger than box-reject."
+            help="Box threshold for boxes larger than box-reject.",
         )
         parser.add_argument(
             "--plot-overlay",
