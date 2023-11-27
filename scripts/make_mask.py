@@ -342,13 +342,16 @@ def run_model(
     gc.collect()
 
 
-def annotate_trees_batch(input_images, output_dir, delete_mask_raster=False, **kwargs):
+def annotate_trees_batch(
+    input_images, output_dir, delete_mask_raster=False, restart=True, **kwargs
+):
     """Run annotate_trees on a list of input GeoTIFF images.
 
     Parameters:
     input_images: (list) List of input GeoTIFF image filenames.
     output_dir: (str) Directory to place output files.
     delete_mask_raster: (bool) Remove the merged raster mask (in favour of the vector GeoJSON)
+    restart: (bool) Dont do annotations on files where its already been done
     **kwargs: (dict) Keyword arguments passed to annotate_trees.
     """
 
@@ -356,6 +359,10 @@ def annotate_trees_batch(input_images, output_dir, delete_mask_raster=False, **k
         print(f"Annotating {image}")
         image_filename = os.path.basename(image)
         output_basename = os.path.splitext(image_filename)[0]
+        if restart and os.path.exists(
+            os.path.join(output_dir, output_basename) + ".geojson"
+        ):
+            continue
         annotate_trees(
             image, output_root=os.path.join(output_dir, output_basename), **kwargs
         )
