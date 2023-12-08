@@ -1,19 +1,26 @@
+# -*- coding: utf-8 -*-
+import glob
+import logging
+import os
+
 import geopandas as gpd
 import pandas as pd
 from tqdm import tqdm
-import glob
-import os
-import logging
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-
-def merge_osm_blocks(osm_path:str="/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/",save:bool=True, ignored_files:list=["merged.geojson","merged_filtered.geojson"]):
+def merge_osm_blocks(
+    osm_path: str = "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/",
+    save: bool = True,
+    ignored_files: list = ["merged.geojson", "merged_filtered.geojson"],
+):
     # Read in the buildings from all files in the osm directory
     osm_files = glob.glob(os.path.join(osm_path, "*.geojson"))
-    osm_files = [file for file in osm_files if os.path.basename(file) not in ignored_files]
+    osm_files = [
+        file for file in osm_files if os.path.basename(file) not in ignored_files
+    ]
     # Merge all the files into one dataframe
     # Initialize a list to hold GeoDataFrames
     gdfs = []
@@ -36,15 +43,20 @@ def merge_osm_blocks(osm_path:str="/home/sahand/Data/GIS2COCO/osm_building_annot
     gdf_osm = gpd.GeoDataFrame(osm, crs=crs, geometry=osm.geometry)
 
     if save:
-        gdf_osm.to_file(os.path.join(osm_path,"merged.geojson"), driver="GeoJSON")
-    
+        gdf_osm.to_file(os.path.join(osm_path, "merged.geojson"), driver="GeoJSON")
+
     return gdf_osm
 
-def filter_osm_columns(osm_path:str="/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/", columns:str="/home/sahand/Data/GIS2COCO/osm_columns.csv", save:bool=True):
+
+def filter_osm_columns(
+    osm_path: str = "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/",
+    columns: str = "/home/sahand/Data/GIS2COCO/osm_columns.csv",
+    save: bool = True,
+):
 
     # Read in the OSM data
     if os.path.isdir(osm_path):
-        osm = merge_osm_blocks(osm_path=osm_path,save=False)
+        osm = merge_osm_blocks(osm_path=osm_path, save=False)
     else:
         osm = gpd.read_file(osm_path)
 
@@ -56,9 +68,10 @@ def filter_osm_columns(osm_path:str="/home/sahand/Data/GIS2COCO/osm_building_ann
 
     # Save the filtered OSM data
     if save:
-        osm.to_file(os.path.join(osm_path,"merged_filtered.geojson"), driver="GeoJSON")
+        osm.to_file(os.path.join(osm_path, "merged_filtered.geojson"), driver="GeoJSON")
 
     return osm
+
 
 def osm_level_cleaner():
     raise NotImplementedError
@@ -68,25 +81,32 @@ def level_interpolation():
     raise NotImplementedError
 
 
-def osm_level_categorise(osm_path:str="/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_filtered.geojson",column:str="building:levels"):
+def osm_level_categorise(
+    osm_path: str = "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_filtered.geojson",
+    column: str = "building:levels",
+    save: bool = True,
+):
     raise NotImplementedError
 
     # Read in the OSM data
     if os.path.isdir(osm_path):
-        annotations = merge_osm_blocks(osm_path=osm_path,save=False)
+        annotations = merge_osm_blocks(osm_path=osm_path, save=False)
     else:
         annotations = gpd.read_file(osm_path)
 
     # Categorise `column` column and add the vategories based on level category: 1-3 | 4-9 | 10+ to a new column of `level_categories`
-    annotations["level_categories"] = annotations[column].apply(lambda x: "low" if x <= 3 else ("mid" if x <= 9 else "high"))
-
+    annotations["level_categories"] = annotations[column].apply(
+        lambda x: "low" if x <= 3 else ("mid" if x <= 9 else "high")
+    )
 
     # Save the filtered OSM data
     if save:
-        osm.to_file(os.path.join(osm_path,"merged_categorised.geojson"), driver="GeoJSON")
+        annotations.to_file(
+            os.path.join(osm_path, "merged_categorised.geojson"), driver="GeoJSON"
+        )
 
-    return osm
+    return annotations
+
 
 def osm_landuse_concat():
     raise NotImplementedError
-
