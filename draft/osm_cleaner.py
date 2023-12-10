@@ -10,12 +10,24 @@ from tqdm import tqdm
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
+tqdm.pandas()
+
 
 def merge_osm_blocks(
     osm_path: str = "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/",
     save: bool = True,
     ignored_files: list = ["merged.geojson", "merged_filtered.geojson"],
 ):
+    """Merge all the OSM files in the osm_path into one GeoDataFrame.
+
+    Args:
+        osm_path (str): Path to the OSM files.
+        save (bool, optional): Whether to save the merged GeoDataFrame. Defaults to True.
+        ignored_files (list, optional): List of files to ignore. Defaults to ["merged.geojson", "merged_filtered.geojson"].
+
+    Returns:
+        gpd.GeoDataFrame: The merged GeoDataFrame.
+    """
     # Read in the buildings from all files in the osm directory
     osm_files = glob.glob(os.path.join(osm_path, "*.geojson"))
     osm_files = [
@@ -43,7 +55,9 @@ def merge_osm_blocks(
     gdf_osm = gpd.GeoDataFrame(osm, crs=crs, geometry=osm.geometry)
 
     if save:
-        gdf_osm.to_file(os.path.join(osm_path, "merged.geojson"), driver="GeoJSON")
+        gdf_osm.to_file(
+            os.path.join(os.path.dirname(osm_path), "merged.geojson"), driver="GeoJSON"
+        )
 
     return gdf_osm
 
@@ -53,6 +67,16 @@ def filter_osm_columns(
     columns: str = "/home/sahand/Data/GIS2COCO/osm_columns.csv",
     save: bool = True,
 ):
+    """Filter out the columns we don't need from the OSM data.
+
+    Args:
+        osm_path (str, optional): Path to the OSM file. Defaults to "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/".
+        columns (str, optional): Path to the columns csv file. Defaults to "/home/sahand/Data/GIS2COCO/osm_columns.csv".
+        save (bool, optional): Whether to save the filtered OSM data. Defaults to True.
+
+    Returns:
+        gpd.GeoDataFrame: The filtered OSM data.
+    """
 
     # Read in the OSM data
     if os.path.isdir(osm_path):
@@ -68,13 +92,81 @@ def filter_osm_columns(
 
     # Save the filtered OSM data
     if save:
-        osm.to_file(os.path.join(osm_path, "merged_filtered.geojson"), driver="GeoJSON")
+        osm.to_file(
+            os.path.join(os.path.dirname(osm_path), "merged_filtered.geojson"),
+            driver="GeoJSON",
+        )
 
     return osm
 
 
-def osm_level_cleaner():
-    raise NotImplementedError
+def to_int(x):
+    """Convert a string to int.
+
+    Args:
+        x (str): The string to convert.
+
+    Returns:
+        int: The converted int.
+    """
+    try:
+        return int(x)
+    except Exception as e:
+        logger.info(f"Skipped converting {x} to int: {e}")
+        return None
+
+
+def cleaner_function(x):
+    """Clean the level column in the OSM data.
+
+    Args:
+        x (str): The string to clean.
+
+    Returns:
+        int: The cleaned int.
+    """
+    if x == ">1" or x == "1.5" or x == 1.5:
+        return 1
+    elif x == 0 or x == "0":
+        return 1
+    elif str(x).lower() == "kiosk":
+        return 1
+    else:
+        return to_int(x)
+
+
+def osm_level_cleaner(
+    osm_path: str = "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_filtered.geojson",
+    column: str = "building:levels",
+    save: bool = True,
+    clean=cleaner_function,
+):
+    """Clean the level column in the OSM data.
+
+    Args:
+        osm_path (str, optional): Path to the OSM file. Defaults to "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_filtered.geojson".
+        column (str, optional): The column to clean. Defaults to "building:levels".
+        save (bool, optional): Whether to save the cleaned OSM data. Defaults to True.
+
+    Returns:
+        gpd.GeoDataFrame: The cleaned OSM data.
+    """
+
+    # Read in the OSM data
+    if os.path.isdir(osm_path):
+        annotations = merge_osm_blocks(osm_path=osm_path, save=False)
+    else:
+        annotations = gpd.read_file(osm_path)
+
+    # Clean the level column
+    annotations[column] = annotations[column].progress_apply(lambda x: clean(x))
+
+    # Save the cleaned OSM data
+    if save:
+        out_path = os.path.join(os.path.dirname(osm_path), "merged_cleaned.geojson")
+        annotations.to_file(out_path, driver="GeoJSON")
+
+    return annotations
 
 
 def level_interpolation():
@@ -86,7 +178,16 @@ def osm_level_categorise(
     column: str = "building:levels",
     save: bool = True,
 ):
-    raise NotImplementedError
+    """Categorise the OSM data based on the number of levels.
+
+    Args:
+        osm_path (str, optional): Path to the OSM file. Defaults to "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_filtered.geojson".
+        column (str, optional): The column to categorise. Defaults to "building:levels".
+        save (bool, optional): Whether to save the categorised OSM data. Defaults to True.
+
+    Returns:
+        gpd.GeoDataFrame: The categorised OSM data.
+    """
 
     # Read in the OSM data
     if os.path.isdir(osm_path):
@@ -102,7 +203,8 @@ def osm_level_categorise(
     # Save the filtered OSM data
     if save:
         annotations.to_file(
-            os.path.join(osm_path, "merged_categorised.geojson"), driver="GeoJSON"
+            os.path.join(os.path.dirname(osm_path), "merged_categorised.geojson"),
+            driver="GeoJSON",
         )
 
     return annotations
@@ -110,3 +212,6 @@ def osm_level_categorise(
 
 def osm_landuse_concat():
     raise NotImplementedError
+
+
+osm_level_cleaner()
