@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import gc
 import glob
 import os
 import shutil
@@ -13,9 +12,9 @@ import numpy as np
 import rasterio
 import rioxarray
 import torch
+from aerial_conversion.tiles import save_tiles
 from matplotlib import pylab as plt
 from PIL import Image
-from samgeo import split_raster
 from samgeo.common import download_file, raster_to_geojson
 from samgeo.text_sam import LangSAM, array_to_image
 
@@ -128,6 +127,8 @@ def predict_with_box_reject(
 
     self.image = image_pil
 
+    print(f"Image size {image_np.shape[:2]}")
+
     boxes, logits, phrases = self.predict_dino(
         image_pil, text_prompt, box_threshold, text_threshold
     )
@@ -137,17 +138,13 @@ def predict_with_box_reject(
     max_area = box_reject * im_w * im_h
     for this_b, this_l, this_p in zip(boxes, logits, phrases):
         this_area = (this_b[2] - this_b[0]) * (this_b[3] - this_b[1])
-        if this_area < max_area:
-            keep_b.append(this_b)
-            keep_l.append(this_l)
-            keep_p.append(this_p)
-        elif this_l > high_thresh:
+        if this_area < max_area or this_l > high_thresh:
             keep_b.append(this_b)
             keep_l.append(this_l)
             keep_p.append(this_p)
         else:
             print(
-                f"rejected box {this_b}, size: {this_area}, max_size: {max_area}, logit: {this_l}"
+                f"rejected box {this_b}, size: {this_area:.0f}, max_size: {max_area:.0f}, logit: {this_l:.3f}"
             )
     if len(keep_b) > 0:
         boxes, logits, phrases = (torch.stack(keep_b), torch.stack(keep_l), keep_p)
@@ -292,8 +289,8 @@ def run_model(
     text_threshold=0.24,
     output_dir="masks",
     text_prompt="tree",
-    box_reject=0.99,
-    high_box_threshold=0.0,
+    box_reject=0.9,
+    high_box_threshold=0.35,
 ):
     """Generate a LangSAM segment anything geospatial model and predict on the
     input images.
@@ -325,7 +322,6 @@ def run_model(
     LangSAM.predict = partialmethod(
         predict_with_box_reject, box_reject=box_reject, high_thresh=high_box_threshold
     )
-    LangSAM.show_anns = my_show_anns
     sam = LangSAM()
     sam.predict_batch(
         images=input_images,
@@ -338,8 +334,6 @@ def run_model(
         merge=False,
         verbose=True,
     )
-    del sam
-    gc.collect()
 
 
 def annotate_trees_batch(
@@ -370,47 +364,31 @@ def annotate_trees_batch(
             os.remove(os.path.join(output_basename, "_mask.tif"))
 
 
-def merge_mask(tile_files, template, output):
+def merge_mask(tile_files, template, output, mask_fraction=0.5):
     """Merge the tiles tile_files onto the grid defined by template."""
 
     # Get metadata and shape of template
-    temp_rio = rasterio.open(template)
-    temp_meta = temp_rio.meta
-    output_shape = (
-        temp_meta["height"],
-        temp_meta["width"],
-    )
+    template_rio = rioxarray.open_rasterio(template)
+    output_shape = template_rio.shape[1:]
+
     output_mask = np.zeros(output_shape, dtype=np.uint8)
-    scratch_mask = np.zeros(output_shape, dtype=np.uint8)
     weight_mask = np.zeros(output_shape, dtype=np.uint8)
 
     for mask_file in tile_files:
-        tile_rio = rasterio.open(mask_file)
-        tile_data = tile_rio.read()[0]
-        tile_meta = tile_rio.meta
-        rep_kwargs = {
-            "src_transform": tile_meta["transform"],
-            "dst_transform": temp_meta["transform"],
-            "src_crs": tile_meta["crs"],
-            "dst_crs": temp_meta["crs"],
-            "dst_nodata": 0,
-            "destination": scratch_mask,
-        }
-        # Regrid tile onto accum_mask
-        rasterio.warp.reproject(tile_data, **rep_kwargs)
-        output_mask += scratch_mask
+        tile_rio = rioxarray.open_rasterio(mask_file)
+        tile_reproject = tile_rio.rio.reproject_match(
+            template_rio, nodata=0, resampling=rasterio.enums.Resampling.nearest
+        )
+        output_mask += tile_reproject.data[0]
         # sum onto weight mask
-        tile_weight = np.ones_like(tile_data)
-        rasterio.warp.reproject(tile_weight, **rep_kwargs)
-        weight_mask += scratch_mask
+        tile_rio.data[:] = 1
+        tile_reproject = tile_rio.rio.reproject_match(
+            template_rio, nodata=0, resampling=rasterio.enums.Resampling.nearest
+        )
+        weight_mask += tile_reproject.data[0]
 
-    out_mask = np.where(output_mask / weight_mask > 0.5, 255, 0)
-    # plt.imshow(weight_mask)
-    # plt.show()
-    # plt.imshow(output_mask)
-    # plt.show()
-    # plt.imshow(out_mask)
-    # plt.show()
+    out_mask = np.where(output_mask / weight_mask > mask_fraction, 255, 0)
+    # Write out a new tiff with the merged mask.
     with rasterio.open(
         output,
         "w",
@@ -420,8 +398,8 @@ def merge_mask(tile_files, template, output):
         count=1,
         dtype=np.uint8,
         nodata=0,
-        transform=temp_meta["transform"],
-        crs=temp_meta["crs"],
+        transform=template_rio.rio.transform(),
+        crs=template_rio.rio.crs,
     ) as dst:
         dst.write(out_mask, indexes=1)
 
@@ -430,17 +408,17 @@ def annotate_trees(
     input_image,
     box_threshold=0.23,
     output_root=None,
-    tile_size=1500,
-    tile_overlap=0,
+    tile_size=600,
+    tile_overlap=30.0,
     text_prompt="tree",
     overwrite=True,
     tile_dir="tiles",
     class_dir="masks",
     cleanup=False,
-    box_reject=0.85,
+    box_reject=0.9,
     reproject=None,
     plot_result=False,
-    high_box_threshold=0.0,
+    high_box_threshold=0.35,
 ):
     """Tile up an image, Run segment anything geospatial on it and plot the
     result.
@@ -477,7 +455,7 @@ def annotate_trees(
         _, in_ext = os.path.splitext(input_image)
         rep_image = output_root + "_rep" + in_ext
         in_im = rioxarray.open_rasterio(input_image)
-        rep_im = in_im.rio.reproject(reproject)
+        rep_im = in_im.rio.reproject(in_im.rio.crs)
         rep_im.rio.to_raster(rep_image, compress="DEFLATE", tiled=True)
     else:
         rep_image = input_image
@@ -501,12 +479,19 @@ def annotate_trees(
         shutil.rmtree(class_dir, ignore_errors=True)
 
     # Retile the input image (always square tiles for now)
-    split_raster(rep_image, out_dir=tile_dir, tile_size=tile_size, overlap=tile_overlap)
+    # Read input file and create tile rasters
+    with rasterio.open(rep_image) as geotiff:
+        save_tiles(
+            geotiff,
+            tile_dir,
+            tile_size,
+            tile_template="tile_{}-{}.tif",
+            offset=tile_overlap,
+            map_units=False,
+        )
     tile_dir_list = glob.glob(os.path.join(tile_dir, "*"))
     tile_size = cv2.imread(tile_dir_list[0]).shape
-    print(
-        f"Split image into {len(tile_dir_list)} tiles of size {tile_size[0]}x{tile_size[1]}"
-    )
+    print(f"Split image into {len(tile_dir_list)} tiles.")
 
     # Now we have our tiles, generate the segment anything classification
     run_model(
@@ -576,31 +561,43 @@ def main(args=None):
         parser.add_argument(
             "--tile-size",
             type=int,
-            default=1500,
+            default=600,
             help="Size of tiles in pixels to split images into before annotating",
         )
         parser.add_argument(
             "--tile-overlap",
-            type=int,
-            default=0,
-            help="Number of pixels to overlap the tiles.",
+            type=float,
+            default=30.0,
+            help="Percentage of overlap of the tiles.",
         )
         parser.add_argument(
             "--box-reject",
             type=float,
-            default=0.8,
+            default=0.9,
             help="Reject predicted boxes with this fraction of the input tile area.",
         )
         parser.add_argument(
             "--high-box-threshold",
             type=float,
-            default=0.0,
+            default=0.35,
             help="Box threshold for boxes larger than box-reject.",
         )
         parser.add_argument(
             "--plot-overlay",
             action="store_true",
             help="Plot the annotation mask onto the input image as a PNG.",
+        )
+        parser.add_argument(
+            "--tile-dir",
+            type=str,
+            default="tiles",
+            help="Name of directory to store temporary tiles.",
+        )
+        parser.add_argument(
+            "--mask-dir",
+            type=str,
+            default="masks",
+            help="Name of directory to store temporary tile masks.",
         )
         return parser
 
@@ -617,6 +614,8 @@ def main(args=None):
             box_reject=args.box_reject,
             plot_result=args.plot_overlay,
             high_box_threshold=args.high_box_threshold,
+            tile_dir=args.tile_dir,
+            class_dir=args.mask_dir,
         )
     else:
         annotate_trees(
@@ -628,6 +627,8 @@ def main(args=None):
             box_reject=args.box_reject,
             plot_result=args.plot_overlay,
             high_box_threshold=args.high_box_threshold,
+            tile_dir=args.tile_dir,
+            class_dir=args.mask_dir,
         )
 
 
