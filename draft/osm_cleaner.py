@@ -173,10 +173,30 @@ def level_interpolation():
     raise NotImplementedError
 
 
+def level_bracketing(x):
+    """Categorise the OSM data based on the number of levels.
+
+    Args:
+        x (int): The number of levels.
+
+    Returns:
+        str: The level category.
+    """
+    if x <= 3:
+        return "low"
+    elif x <= 9:
+        return "mid"
+    elif x > 9:
+        return "high"
+    else:
+        return None
+
+
 def osm_level_categorise(
     osm_path: str = "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_filtered.geojson",
     column: str = "building:levels",
     save: bool = True,
+    categorise=level_bracketing,
 ):
     """Categorise the OSM data based on the number of levels.
 
@@ -196,9 +216,7 @@ def osm_level_categorise(
         annotations = gpd.read_file(osm_path)
 
     # Categorise `column` column and add the vategories based on level category: 1-3 | 4-9 | 10+ to a new column of `level_categories`
-    annotations["level_categories"] = annotations[column].apply(
-        lambda x: "low" if x <= 3 else ("mid" if x <= 9 else "high")
-    )
+    annotations["level_categories"] = annotations[column].apply(lambda x: categorise(x))
 
     # Save the filtered OSM data
     if save:
