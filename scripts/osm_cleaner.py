@@ -10,7 +10,7 @@ import pandas as pd
 from shapely.geometry import Polygon
 from tqdm import tqdm
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
@@ -535,8 +535,8 @@ def main(args):
             f"Assuming the data is filtered and is readey to be cleaned. The cleaner_in_path is set to {cleaner_in_path}."
         )
     else:
-        cleaner_in_path = (
-            os.path.join(os.path.dirname(args.osm_path), "merged_filtered.geojson"),
+        cleaner_in_path = os.path.join(
+            os.path.dirname(args.osm_path), "merged_filtered.geojson"
         )
 
         print("Running filter_osm_columns")
