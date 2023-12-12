@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import argparse
 import glob
 import logging
 import os
@@ -13,6 +14,152 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
+
+# Helper functions
+
+
+def to_int(x):
+    """Convert a string to int.
+
+    Args:
+        x (str): The string to convert.
+
+    Returns:
+        int: The converted int.
+    """
+    try:
+        return int(x)
+    except Exception as e:
+        logger.info(f"Skipped converting {x} to int. Will return 0.\n: {e}")
+        return 0
+
+
+def cleaner_function(x):
+    """Clean the level column in the OSM data.
+
+    Args:
+        x (str): The string to clean.
+
+    Returns:
+        int: The cleaned int.
+    """
+    if x == ">1" or x == "1.5" or x == 1.5:
+        return 1
+    elif x == 0 or x == "0":
+        return 1
+    elif str(x).lower() == "kiosk":
+        return 1
+    else:
+        return to_int(x)
+
+
+def level_average(intersecting_gdf, column):
+    """Get the average level of the intersecting buildings.
+
+    Args:
+        intersecting_gdf (gpd.GeoDataFrame): The GeoDataFrame of intersecting buildings.
+        column (str): The column to get the average of.
+
+    Returns:
+        float: The average level.
+    """
+    # drop rows with columns that are None or zero before averaging
+    intersecting_gdf = intersecting_gdf[intersecting_gdf[column].notnull()]
+    intersecting_gdf = intersecting_gdf[intersecting_gdf[column] > 0]
+    if intersecting_gdf.shape[0] > 0:
+        return intersecting_gdf[column].mean()
+    else:
+        logger.info(
+            "No intersecting buildings found. The block will return a None value for average."
+        )
+        return None
+
+
+def level_std_average(intersecting_gdf, column):
+    """Get the average level of the intersecting buildings within its standard
+    deviation.
+
+    Args:
+        intersecting_gdf (gpd.GeoDataFrame): The GeoDataFrame of intersecting buildings.
+        column (str): The column to get the average of.
+
+    Returns:
+        float: The average level.
+    """
+    # drop rows with columns that are None or zero before averaging
+    intersecting_gdf = intersecting_gdf[intersecting_gdf[column].notnull()]
+    intersecting_gdf = intersecting_gdf[intersecting_gdf[column] > 0]
+
+    mean = intersecting_gdf[column].mean()
+    std = intersecting_gdf[column].std()
+
+    # Find the values in between the mean +- std
+    intersecting_gdf = intersecting_gdf[
+        intersecting_gdf[column].between(mean - std, mean + std)
+    ]
+
+    if intersecting_gdf.shape[0] > 0:
+        return intersecting_gdf[column].mean()
+    else:
+        logger.info(
+            "No intersecting buildings found. The block will return a None value for average."
+        )
+        return None
+
+
+def replacer(row, column_1, column_2):
+    """Replace the value in column_1 with the value in column_2 if the value in
+    column_1 is None or zero.
+
+    Args:
+        row (pd.Series): The row to replace.
+        column_1 (str): The column to replace.
+        column_2 (str): The column to replace with.
+
+    Returns:
+        int: The replaced value.
+    """
+    # if there is no value in column_1, or if the value is zero, null, or none, return the value in column_2
+    # else return the value in column_1
+
+    if (
+        row[column_1] is None
+        or row[column_1] == 0
+        or row[column_1] == "0"
+        or row[column_1] == np.nan
+        or row[column_1] == "nan"
+        or row[column_1] == "None"
+        or row[column_1] == "none"
+        or row[column_1] == "Null"
+        or row[column_1] == "null"
+        or row[column_1] == "NULL"
+    ):
+        return row[column_2]
+    else:
+        # print(row[column_1],row[column_2])
+        return int(row[column_1])
+
+
+def level_bracketing(x):
+    """Categorise the OSM data based on the number of levels.
+
+    Args:
+        x (int): The number of levels.
+
+    Returns:
+        str: The level category.
+    """
+    if x <= 3:
+        return "low"
+    elif x <= 9:
+        return "mid"
+    elif x > 9:
+        return "high"
+    else:
+        return None
+
+
+# Main functions
 
 
 def merge_osm_blocks(
@@ -102,41 +249,6 @@ def filter_osm_columns(
     return osm
 
 
-def to_int(x):
-    """Convert a string to int.
-
-    Args:
-        x (str): The string to convert.
-
-    Returns:
-        int: The converted int.
-    """
-    try:
-        return int(x)
-    except Exception as e:
-        logger.info(f"Skipped converting {x} to int. Will return 0.\n: {e}")
-        return 0
-
-
-def cleaner_function(x):
-    """Clean the level column in the OSM data.
-
-    Args:
-        x (str): The string to clean.
-
-    Returns:
-        int: The cleaned int.
-    """
-    if x == ">1" or x == "1.5" or x == 1.5:
-        return 1
-    elif x == 0 or x == "0":
-        return 1
-    elif str(x).lower() == "kiosk":
-        return 1
-    else:
-        return to_int(x)
-
-
 def osm_level_cleaner(
     osm_path: str = "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_filtered.geojson",
     column: str = "building:levels",
@@ -170,60 +282,6 @@ def osm_level_cleaner(
         annotations.to_file(out_path, driver="GeoJSON")
 
     return annotations
-
-
-def level_average(intersecting_gdf, column):
-    """Get the average level of the intersecting buildings.
-
-    Args:
-        intersecting_gdf (gpd.GeoDataFrame): The GeoDataFrame of intersecting buildings.
-        column (str): The column to get the average of.
-
-    Returns:
-        float: The average level.
-    """
-    # drop rows with columns that are None or zero before averaging
-    intersecting_gdf = intersecting_gdf[intersecting_gdf[column].notnull()]
-    intersecting_gdf = intersecting_gdf[intersecting_gdf[column] > 0]
-    if intersecting_gdf.shape[0] > 0:
-        return intersecting_gdf[column].mean()
-    else:
-        logger.info(
-            "No intersecting buildings found. The block will return a None value for average."
-        )
-        return None
-
-
-def level_std_average(intersecting_gdf, column):
-    """Get the average level of the intersecting buildings within its standard
-    deviation.
-
-    Args:
-        intersecting_gdf (gpd.GeoDataFrame): The GeoDataFrame of intersecting buildings.
-        column (str): The column to get the average of.
-
-    Returns:
-        float: The average level.
-    """
-    # drop rows with columns that are None or zero before averaging
-    intersecting_gdf = intersecting_gdf[intersecting_gdf[column].notnull()]
-    intersecting_gdf = intersecting_gdf[intersecting_gdf[column] > 0]
-
-    mean = intersecting_gdf[column].mean()
-    std = intersecting_gdf[column].std()
-
-    # Find the values in between the mean +- std
-    intersecting_gdf = intersecting_gdf[
-        intersecting_gdf[column].between(mean - std, mean + std)
-    ]
-
-    if intersecting_gdf.shape[0] > 0:
-        return intersecting_gdf[column].mean()
-    else:
-        logger.info(
-            "No intersecting buildings found. The block will return a None value for average."
-        )
-        return None
 
 
 def level_interpolation(
@@ -326,27 +384,6 @@ def level_interpolation(
         lambda x: grid[grid.intersects(x)]["level_average"].values[0]
     )
 
-    def replacer(row, column_1, column_2):
-        # if there is no value in column_1, or if the value is zero, null, or none, return the value in column_2
-        # else return the value in column_1
-
-        if (
-            row[column_1] is None
-            or row[column_1] == 0
-            or row[column_1] == "0"
-            or row[column_1] == np.nan
-            or row[column_1] == "nan"
-            or row[column_1] == "None"
-            or row[column_1] == "none"
-            or row[column_1] == "Null"
-            or row[column_1] == "null"
-            or row[column_1] == "NULL"
-        ):
-            return row[column_2]
-        else:
-            # print(row[column_1],row[column_2])
-            return int(row[column_1])
-
     # Interpolate the level column
     logger.info("Interpolating the level column...")
     gdf["interpolated_level"] = gdf.progress_apply(
@@ -362,30 +399,12 @@ def level_interpolation(
     return gdf
 
 
-def level_bracketing(x):
-    """Categorise the OSM data based on the number of levels.
-
-    Args:
-        x (int): The number of levels.
-
-    Returns:
-        str: The level category.
-    """
-    if x <= 3:
-        return "low"
-    elif x <= 9:
-        return "mid"
-    elif x > 9:
-        return "high"
-    else:
-        return None
-
-
 def osm_level_categorise(
     osm_path: str = "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_interpolated.geojson",
     column: str = "interpolated_level",
     save: bool = True,
     categorise=level_bracketing,
+    out_name: str = "merged_categorised.geojson",
 ):
     """Categorise the OSM data based on the number of levels.
 
@@ -393,6 +412,8 @@ def osm_level_categorise(
         osm_path (str, optional): Path to the OSM file. Defaults to "/home/sahand/Data/GIS2COCO/osm_building_annotations_by_10_percent_grid/merged_filtered.geojson".
         column (str, optional): The column to categorise. Defaults to "interpolated_level".
         save (bool, optional): Whether to save the categorised OSM data. Defaults to True.
+        categorise (function, optional): The function to categorise the level column. Defaults to level_bracketing.
+        out_name (str, optional): The name of the output file. Defaults to "merged_categorised.geojson".
 
     Returns:
         gpd.GeoDataFrame: The categorised OSM data.
@@ -412,7 +433,7 @@ def osm_level_categorise(
     # Save the filtered OSM data
     if save:
         annotations.to_file(
-            os.path.join(os.path.dirname(osm_path), "merged_categorised.geojson"),
+            os.path.join(os.path.dirname(osm_path), out_name),
             driver="GeoJSON",
         )
 
@@ -423,17 +444,148 @@ def osm_landuse_concat():
     raise NotImplementedError
 
 
-if __name__ == "__main__":
-    print("Running osm_cleaner")
-    filter_osm_columns()
-    print("Done.")
-    print("Running osm_level_cleaner")
-    osm_level_cleaner()
-    print("Done.")
+def argparser():
+    parser = argparse.ArgumentParser(
+        description="OSM data cleaner and building level categoriser."
+    )
+    parser.add_argument(
+        "--osm_path",
+        type=str,
+        default="osm_building_annotations_by_10_percent_grid/",
+        help="Path to the OSM files.",
+    )
+    parser.add_argument(
+        "--columns",
+        type=str,
+        default="osm_columns.csv",
+        help="Path to the columns filter csv file. The listed columns will be used.",
+    )
+    parser.add_argument(
+        "--column",
+        type=str,
+        default="building:levels",
+        help="The column to use for the building height.",
+    )
+    parser.add_argument(
+        "--out_name",
+        type=str,
+        default="merged_categorised.geojson",
+        help="The name of the output merged and height categorised file.",
+    )
+    parser.add_argument(
+        "--area_unit",
+        type=str,
+        default="utm",
+        help="The unit of the area.",
+    )
+    parser.add_argument(
+        "--size_unit",
+        type=str,
+        default=None,
+        help="The unit of the tile size.",
+    )
+    parser.add_argument(
+        "--tile_size",
+        type=float,
+        default=500,
+        help="The size of the tiles. This is effectively the averaging spatial window size. Defaults to %(default)s.",
+    )
+    parser.add_argument(
+        "--average_function",
+        type=str,
+        default="level_std_average",
+        help="The function to get the average. If 'level_std_average', the average will be within the standard deviation, ignoring the outliers. If 'level_average', the average will be the mean of all the values, including the outliers. Defaults to %(default)s.",
+    )
+    parser.add_argument(
+        "--categorise",
+        type=str,
+        default="level_bracketing",
+        help="The function to categorise the level column. If 'level_bracketing', the levels will be categorised into low, mid, and high. Defaults to %(default)s",
+    )
+    parser.add_argument(
+        "--cleaner_in_path",
+        type=str,
+        default=None,
+        help="The path to the cleaned OSM file. If given, means we have a data with filtered columns, but we want to clean up the column of interest. If None, the path will be set to the path of the merged and filtered OSM file, instructing the script to run the previous levels as well.",
+    )
+    parser.add_argument(
+        "--interpolate_in_path",
+        type=str,
+        default=None,
+        help="The path to the interpolated OSM file. If given, means we have a cleaned data and we only need to continue from interpolation. If None, the path will be set to the path of the merged and cleaner OSM file, instructing the script to run the previous levels as well.",
+    )
+
+    return parser.parse_args()
+
+
+def main(args):
+    if args.average_function == "level_std_average":
+        average_function = level_std_average
+    else:
+        average_function = level_average
+
+    if args.categorise == "level_bracketing":
+        categorise = level_bracketing
+    else:
+        raise NotImplementedError
+
+    if args.cleaner_in_path is not None:
+        cleaner_in_path = args.cleaner_in_path
+        logger.info(
+            f"Assuming the data is filtered and is readey to be cleaned. The cleaner_in_path is set to {cleaner_in_path}."
+        )
+    else:
+        cleaner_in_path = (
+            os.path.join(os.path.dirname(args.osm_path), "merged_filtered.geojson"),
+        )
+
+        print("Running filter_osm_columns")
+        filter_osm_columns(osm_path=args.osm_path, columns=args.columns, save=True)
+        print("Done.")
+
+    if args.interpolate_in_path is not None:
+        interpolate_in_path = args.interpolate_in_path
+        logger.info(
+            f"Assuming the data is cleaned and is readey to be interpolated. The interpolate_in_path is set to {interpolate_in_path}."
+        )
+    else:
+        interpolate_in_path = os.path.join(
+            os.path.dirname(args.osm_path), "merged_cleaned.geojson"
+        )
+
+        print("Running osm_level_cleaner")
+        osm_level_cleaner(
+            osm_path=cleaner_in_path,
+            column=args.column,
+            save=True,
+        )
+        print("Done.")
+
     print("Running osm_level_interpolation")
-    level_interpolation(average_function=level_std_average)
+    level_interpolation(
+        osm_path=interpolate_in_path,
+        column=args.column,
+        save=True,
+        out_name="merged_interpolated.geojson",
+        area_unit=args.area_unit,
+        size_unit=args.size_unit,
+        tile_size=args.tile_size,
+        average_function=average_function,
+    )
     print("Done.")
     print("Running osm_level_categorise")
-    osm_level_categorise()
+    osm_level_categorise(
+        osm_path=os.path.join(
+            os.path.dirname(args.osm_path), "merged_interpolated.geojson"
+        ),
+        save=True,
+        categorise=categorise,
+        out_name=args.out_name,
+    )
     print("Done.")
     print("All operations completed successfully.")
+
+
+if __name__ == "__main__":
+    args = argparser()
+    main(args)
