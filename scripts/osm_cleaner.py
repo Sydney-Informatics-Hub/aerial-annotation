@@ -53,7 +53,7 @@ def cleaner_function(x):
         return to_int(x)
 
 
-def level_average(intersecting_gdf, column):
+def level_average(intersecting_gdf, column, default_na=0):
     """Get the average level of the intersecting buildings.
 
     Args:
@@ -70,12 +70,12 @@ def level_average(intersecting_gdf, column):
         return intersecting_gdf[column].mean()
     else:
         logger.info(
-            "No intersecting buildings found. The block will return a None value for average."
+            f"No intersecting buildings found. The block will return a {default_na} value for average."
         )
-        return None
+        return default_na
 
 
-def level_std_average(intersecting_gdf, column):
+def level_std_average(intersecting_gdf, column, default_na=0):
     """Get the average level of the intersecting buildings within its standard
     deviation.
 
@@ -102,12 +102,12 @@ def level_std_average(intersecting_gdf, column):
         return intersecting_gdf[column].mean()
     else:
         logger.info(
-            "No intersecting buildings found. The block will return a None value for average."
+            f"No intersecting buildings found. The block will return a {default_na} value for average."
         )
-        return None
+        return default_na
 
 
-def replacer(row, column_1, column_2):
+def replacer(row, column_1, column_2, fallback_value):
     """Replace the value in column_1 with the value in column_2 if the value in
     column_1 is None or zero.
 
@@ -137,6 +137,9 @@ def replacer(row, column_1, column_2):
         return row[column_2]
     else:
         # print(row[column_1],row[column_2])
+        if fallback_value is not None:
+            if row[column_1] is None or row[column_1] == 0:
+                return fallback_value
         return int(row[column_1])
 
 
@@ -294,6 +297,7 @@ def level_interpolation(
     tile_size: float = 500,
     average_function=level_std_average,
     total_average: float = None,
+    save_average_grid=True,
 ):
     """Interpolate the level column in the OSM data.
 
@@ -396,6 +400,13 @@ def level_interpolation(
         lambda x: total_average if x is None or x == 0 else x
     )
 
+    if save_average_grid:
+        logger.info("Saving the average grid...")
+        grid.to_file(
+            os.path.join(os.path.dirname(osm_path), "average_grid.geojson"),
+            driver="GeoJSON",
+        )
+
     # Set level_average in gdf to the grid level_average
     logger.info("Setting the level_average in gdf to the grid level_average...")
     gdf["level_average"] = gdf.geometry.progress_apply(
@@ -405,7 +416,7 @@ def level_interpolation(
     # Replace the empty level column rows with average values
     logger.info("Interpolating the level column...")
     gdf["interpolated_level"] = gdf.progress_apply(
-        lambda x: replacer(x, column, "level_average"), axis=1
+        lambda x: replacer(x, column, "level_average", total_average), axis=1
     )
 
     # Save the interpolated OSM data
