@@ -140,7 +140,7 @@ def replacer(row, column_1, column_2):
         return int(row[column_1])
 
 
-def level_bracketing(x):
+def level_bracketing(x, other=None):
     """Categorise the OSM data based on the number of levels.
 
     Args:
@@ -156,7 +156,7 @@ def level_bracketing(x):
     elif x > 9:
         return "high"
     else:
-        return None
+        return other
 
 
 # Main functions
@@ -293,6 +293,7 @@ def level_interpolation(
     size_unit: str = None,
     tile_size: float = 500,
     average_function=level_std_average,
+    total_average: float = None,
 ):
     """Interpolate the level column in the OSM data.
 
@@ -378,13 +379,30 @@ def level_interpolation(
         lambda x: average_function(gdf[gdf.intersects(x)], column)
     )
 
+    if total_average is None:
+        # Get the total average
+        logger.info("Getting the total average...")
+        total_average = average_function(gdf, column)
+    else:
+        logger.info(
+            "The total_average is given. Will use that instead of calculating it."
+        )
+
+    # Set the level_average to the total_average if the level_average is None
+    logger.info(
+        f"Setting the level_average to the total_average {total_average} if the level_average is None..."
+    )
+    grid["level_average"] = grid["level_average"].progress_apply(
+        lambda x: total_average if x is None or x == 0 else x
+    )
+
     # Set level_average in gdf to the grid level_average
     logger.info("Setting the level_average in gdf to the grid level_average...")
     gdf["level_average"] = gdf.geometry.progress_apply(
         lambda x: grid[grid.intersects(x)]["level_average"].values[0]
     )
 
-    # Interpolate the level column
+    # Replace the empty level column rows with average values
     logger.info("Interpolating the level column...")
     gdf["interpolated_level"] = gdf.progress_apply(
         lambda x: replacer(x, column, "level_average"), axis=1
@@ -514,6 +532,12 @@ def argparser():
         default=None,
         help="The path to the interpolated OSM file. If given, means we have a cleaned data and we only need to continue from interpolation. If None, the path will be set to the path of the merged and cleaner OSM file, instructing the script to run the previous levels as well.",
     )
+    parser.add_argument(
+        "--total_average",
+        type=float,
+        default=None,
+        help="The total average level. If None, will be calculated from the data.",
+    )
 
     return parser.parse_args()
 
@@ -571,6 +595,7 @@ def main(args):
         size_unit=args.size_unit,
         tile_size=args.tile_size,
         average_function=average_function,
+        total_average=args.total_average,
     )
     print("Done.")
     print("Running osm_level_categorise")
