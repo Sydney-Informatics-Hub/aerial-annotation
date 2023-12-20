@@ -387,6 +387,9 @@ def merge_mask(tile_files, template, output, mask_fraction=0.5):
        is then derived by only accepting pixels in the ratio that are greater than
        `mask_fraction`.
 
+    The `mask_fraction` default of 50% was chosen empirically via experiments merging masks with
+    a range of numbers of overlapping tiles.
+
     Parameters:
     tile_files: (list of str) A list of the paths to the input TIFF image mask files
     template: (str) A template TIFF image to paste the individual masks onto
