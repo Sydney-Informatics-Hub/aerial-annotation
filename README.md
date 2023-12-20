@@ -43,11 +43,11 @@ The method used here has some important modifications from the vanilla segment-g
 ```
 make_mask.py /path/to/tiff/images \
 --output /path/to/output/directory \
---tile-size=600 \                    
---tile-overlap=30 \                  # Percentage overlap of tiles
---box-reject=0.9 \                   # Fraction of tile area to reject GroundingDINO boxes
---high-box-threshold=0.35 \          # Box threshold for rejecting GroundingDINO boxes larger tha box-reject
---box-threshold=0.23                 # Base box threshold for GroundingDINO
+--tile-size=600 \
+--tile-overlap=30 \
+--box-reject=0.9 \
+--high-box-threshold=0.35 \
+--box-threshold=0.23
 ```
 
 In the above example the options are:
