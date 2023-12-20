@@ -69,7 +69,7 @@ def predict_with_box_reject(
     return_results=False,
     return_coords=False,
     box_reject=0.85,
-    high_thresh=0.36,
+    high_box_threshold=0.36,
     **kwargs,
 ):
     """Run both GroundingDINO and SAM model prediction on a single image.
@@ -97,6 +97,7 @@ def predict_with_box_reject(
         save_args (dict, optional): Save arguments for the prediction. Defaults to {}.
         return_results (bool, optional): Whether to return the results. Defaults to False.
         box_reject (float, optional): Fraction of image area to reject box predictions.
+        high_box_threshold (float, optional): Box threshold for boxes larger than box_reject.
 
     Returns:
         tuple: Tuple containing masks, boxes, phrases, and logits.
@@ -138,7 +139,7 @@ def predict_with_box_reject(
     max_area = box_reject * im_w * im_h
     for this_b, this_l, this_p in zip(boxes, logits, phrases):
         this_area = (this_b[2] - this_b[0]) * (this_b[3] - this_b[1])
-        if this_area < max_area or this_l > high_thresh:
+        if this_area < max_area or this_l > high_box_threshold:
             keep_b.append(this_b)
             keep_l.append(this_l)
             keep_p.append(this_p)
@@ -184,7 +185,7 @@ def predict_with_box_reject(
     self.prediction = mask_overlay
     # png_anns = os.path.splitext(output)[0]
     # print(f'Saving boxes to: {png_anns}')
-    # self.show_anns(output=png_anns)
+    # self.show_anns_text(output=png_anns)
 
     if return_results:
         return masks, boxes, phrases, logits
@@ -197,7 +198,7 @@ def predict_with_box_reject(
         return boxlist
 
 
-def my_show_anns(
+def show_anns_text(
     self,
     figsize=(12, 10),
     axis="off",
@@ -212,6 +213,12 @@ def my_show_anns(
     **kwargs,
 ):
     """Show the annotations (objects with random color) on the input image.
+
+    This function is taken from the LangSAM model in the segment-geospatial library
+    https://github.com/opengeos/segment-geospatial/blob/main/samgeo/text_sam.py#L423
+    with the added feature of printing the box logits in the bottom left of the boxes.
+    It can be monkey-patched into the LangSAM class using a similar method to that
+    described in the docstring for the `predict_with_box_reject` function in this module.
 
     Args:
         figsize (tuple, optional): The figure size. Defaults to (12, 10).
@@ -344,8 +351,8 @@ def annotate_trees_batch(
     Parameters:
     input_images: (list) List of input GeoTIFF image filenames.
     output_dir: (str) Directory to place output files.
-    delete_mask_raster: (bool) Remove the merged raster mask (in favour of the vector GeoJSON)
-    restart: (bool) Dont do annotations on files where its already been done
+    delete_mask_raster: (bool) Remove the merged raster mask (in favour of the vector GeoJSON).
+    restart: (bool) Don't do annotations on inputs where the output already exists.
     **kwargs: (dict) Keyword arguments passed to annotate_trees.
     """
 
@@ -365,7 +372,27 @@ def annotate_trees_batch(
 
 
 def merge_mask(tile_files, template, output, mask_fraction=0.5):
-    """Merge the tiles tile_files onto the grid defined by template."""
+    """Merge the tiles in tile_files onto the grid defined by template.
+
+    This can be used instead of the `merge_rasters` function in:
+    https://github.com/opengeos/segment-geospatial/blob/main/samgeo/common.py#L2931
+    It differs from `merge_rasters` in that:
+    1. It does not rely on `gdal.Warp` - it only relies on `rioxarray` and `rasterio`
+       for manipulating geospatial data types.
+    2. It handles the overlap regions between mask tiles by summing the individual masks
+       from each tile onto an output template, then dividing this `output_mask` by a
+       `weight_mask` which is just the number of times each pixel in the output
+       has been covered by a tile. The ratio `output_mask`/`weight_mask` gives an image
+       showing the fraction of times each pixel has been masked. The combined `out_mask`
+       is then derived by only accepting pixels in the ratio that are greater than
+       `mask_fraction`.
+
+    Parameters:
+    tile_files: (list of str) A list of the paths to the input TIFF image mask files
+    template: (str) A template TIFF image to paste the individual masks onto
+    output: (str) The output file to write the combined mask
+    mask_fraction: (float, optional) The cutoff fraction for accepting pixels in the output mask
+    """
 
     # Get metadata and shape of template
     template_rio = rioxarray.open_rasterio(template)
@@ -379,14 +406,16 @@ def merge_mask(tile_files, template, output, mask_fraction=0.5):
         tile_reproject = tile_rio.rio.reproject_match(
             template_rio, nodata=0, resampling=rasterio.enums.Resampling.nearest
         )
+        # Sum this tile mask onto output_mask
         output_mask += tile_reproject.data[0]
-        # sum onto weight mask
+        # Sum this entire tile onto weight_mask
         tile_rio.data[:] = 1
         tile_reproject = tile_rio.rio.reproject_match(
             template_rio, nodata=0, resampling=rasterio.enums.Resampling.nearest
         )
         weight_mask += tile_reproject.data[0]
-
+    # Divide output_mask by weight_mask and only accept pixels that are masked
+    # more than mask_fraction of the time
     out_mask = np.where(output_mask / weight_mask > mask_fraction, 255, 0)
     # Write out a new tiff with the merged mask.
     with rasterio.open(
@@ -428,7 +457,7 @@ def annotate_trees(
     box_threshold: (float) Box threshold for the prediction.
     output_root: (str) Root filename for outputs (None = use CWD and input filename root).
     tile_size: (int) Size of the tiles to subdivide the input into.
-    tile_overlap: (int) Number of pixels to overlap the tiles.
+    tile_overlap: (int) Percentage of tile_size pixels to overlap the tiles.
     text_prompt: (str) Text input for GroundingDINO detections.
     overwrite: (bool) Allow overwriting of output files if they already exist.
     tile_dir: (str) Location of directory to store tiled images.
