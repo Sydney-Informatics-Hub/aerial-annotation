@@ -43,12 +43,24 @@ The method used here has some important modifications from the vanilla segment-g
 ```
 make_mask.py /path/to/tiff/images \
 --output /path/to/output/directory \
---tile-size=600 \                    # Size of tiles to split image into in pixels
+--tile-size=600 \                    
 --tile-overlap=30 \                  # Percentage overlap of tiles
 --box-reject=0.9 \                   # Fraction of tile area to reject GroundingDINO boxes
 --high-box-threshold=0.35 \          # Box threshold for rejecting GroundingDINO boxes larger tha box-reject
 --box-threshold=0.23                 # Base box threshold for GroundingDINO
 ```
+
+In the above example the options are:
+
+`--tile-size=600`: The size in pixels of tiles to split the input images into.
+
+`--tile-overlap=30`: Overlap size (as a percentage of `tile-size`) and padding of the tiles. With the options `--tile-size=600` and `--tile-overlap=30` roughly 30 tiles of size 1400x1400 are created for an input image of 3000x3000 pixels.
+
+`--box-reject=0.9`: Reject GroundingDINO boxes larger than 90% of the tile size with value below `--high-box-threshold`.
+
+`--high-box-threshold=0.35`: Box threshold for rejecting GroundingDINO boxes larger than box-reject.
+
+`--box-threshold=0.23`: Box threshold for boxes smaller the `box-reject=0.9`.
 
 ## Dataset
 
