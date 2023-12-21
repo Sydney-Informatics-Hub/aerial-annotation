@@ -74,7 +74,9 @@ def predict_with_box_reject(
 ):
     """Run both GroundingDINO and SAM model prediction on a single image.
 
-    NOTE: Stolen from LangSAM.predict() but this adds an option to reject boxes larger than
+    NOTE: This makes use of code from from LangSAM.predict() 
+    (under MIT License at https://github.com/opengeos/segment-geospatial/blob/main/LICENSE)
+    but this adds an option to reject boxes larger than
     a given fraction of the image area before the SAM predict step. This is inteded to be
     monkey-patched into the LangSAM model via the following signature:
 
@@ -215,7 +217,8 @@ def show_anns_text(
     """Show the annotations (objects with random color) on the input image.
 
     This function is taken from the LangSAM model in the segment-geospatial library
-    https://github.com/opengeos/segment-geospatial/blob/main/samgeo/text_sam.py#L423
+    (under MIT License at https://github.com/opengeos/segment-geospatial/blob/main/LICENSE)
+    at https://github.com/opengeos/segment-geospatial/blob/main/samgeo/text_sam.py#L423
     with the added feature of printing the box logits in the bottom left of the boxes.
     It can be monkey-patched into the LangSAM class using a similar method to that
     described in the docstring for the `predict_with_box_reject` function in this module.
@@ -323,7 +326,7 @@ def run_model(
     output_dir: (str) Output directory for the prediction mask files.
     text_prompt: (str) Text prompt for the model.
     box_reject: (float) Fraction of image area to reject box predictions.
-    high_box_threshold: (float) Box threshold for boxes larger than box-reject.
+    high_box_threshold: (float) Box threshold for boxes larger than box_reject.
     """
 
     LangSAM.predict = partialmethod(
