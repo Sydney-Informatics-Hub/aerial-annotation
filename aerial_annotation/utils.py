@@ -1,4 +1,5 @@
-# aerialann/utils.py
+# -*- coding: utf-8 -*-
+# aerialannotation/utils.py
 
 import json
 import geopandas as gpd
