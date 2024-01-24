@@ -3,9 +3,8 @@ import argparse
 import os
 import time
 
-import geojson
+import geopandas
 import numpy as np
-import requests
 from dask import compute, delayed
 from owslib.wms import WebMapService
 
@@ -39,11 +38,12 @@ def download_tiles(features, output_dir, tile_size):
     SIXMAPS_WMS_VERSION = "1.3.0"
 
     wms = WebMapService(SIXMAPS_WMS_URL, version=SIXMAPS_WMS_VERSION, timeout=60)
+    srs = features.crs.srs
 
-    for feature in features:
-        this_id = feature["properties"]["id"]
+    for _, feature in features.iterrows():
+        this_id = feature.id
         this_bbox = [
-            feature["properties"][edge] for edge in ["left", "bottom", "right", "top"]
+            getattr(feature, edge) for edge in ["left", "bottom", "right", "top"]
         ]
         output_file = os.path.join(output_dir, str(this_id) + ".jpg")
         # Don't downliad tiles already downloaded.
@@ -57,7 +57,7 @@ def download_tiles(features, output_dir, tile_size):
             output_file,
             attempts=3,
             bbox=this_bbox,
-            srs="EPSG:3857",
+            srs=srs,
             layers=["0"],
             size=tile_size,
             format="image/jpeg",
@@ -120,11 +120,11 @@ def main(args=None):
 
     args = parse_arguments()
 
-    with open(args.input_json) as file:
-        raw_geojson = geojson.load(file)
+    geojson = geopandas.read_file(args.input_json)
 
-    geojson_feature_list = raw_geojson["features"]
-    num_tiles = len(geojson_feature_list)
+    # geojson_feature_list = raw_geojson["features"]
+    num_tiles = len(geojson)
+    print(f"GeoJSON CRS is {geojson.crs.srs}")
     print(f"{num_tiles} tiles to process....")
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -133,9 +133,7 @@ def main(args=None):
     chunk_slices = get_chunk_slices(num_tiles, args.nthreads)
     # Create N_THREADS function calls - one for each chunk slice in the tile list.
     chunked_download = [
-        delayed(download_tiles)(
-            geojson_feature_list[part], args.output_dir, args.tile_size
-        )
+        delayed(download_tiles)(geojson[part], args.output_dir, args.tile_size)
         for part in chunk_slices
     ]
     # Go get em.
