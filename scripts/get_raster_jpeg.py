@@ -26,7 +26,7 @@ def request_image_from_server(wms_instance, output_file, attempts=3, **kwargs):
             with open(output_file, "wb") as this_image:
                 this_image.write(image_request.read())
             break
-        except requests.exceptions.ReadTimeout:
+        except:
             this_attempt += 1
             if this_attempt > attempts:
                 raise
