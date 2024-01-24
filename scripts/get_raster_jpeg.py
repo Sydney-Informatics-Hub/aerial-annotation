@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import argparse
 import os
 import time
 
@@ -31,14 +32,11 @@ def request_image_from_server(wms_instance, output_file, attempts=3, **kwargs):
                 raise
 
 
-def download_tiles(features, output_dir):
+def download_tiles(features, output_dir, tile_size):
     """Download tiles defined in `features` to `output_dir`"""
 
     SIXMAPS_WMS_URL = "http://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WmsServer"
     SIXMAPS_WMS_VERSION = "1.3.0"
-    # Pixel scale is 0.0746455m at Zoom=21
-    # GSU_grid.geojson is 300x300m
-    SIZE = (4019, 4019)
 
     wms = WebMapService(SIXMAPS_WMS_URL, version=SIXMAPS_WMS_VERSION, timeout=60)
 
@@ -61,7 +59,7 @@ def download_tiles(features, output_dir):
             bbox=this_bbox,
             srs="EPSG:3857",
             layers=["0"],
-            size=SIZE,
+            size=tile_size,
             format="image/jpeg",
         )
         et = time.time()
@@ -83,25 +81,58 @@ def get_chunk_slices(list_length, num_chunks):
     ]
 
 
-def main():
-    INPUT_JSON = "GSU_grid.geojson"
-    OUTPUT_DIR = "output_tiles"
-    N_THREADS = 5
+def main(args=None):
+    def parse_arguments():
+        parser = argparse.ArgumentParser(
+            description="Download raster files in JPEG format from sixmaps Web Map Server"
+        )
+        parser.add_argument(
+            "input_json",
+            type=str,
+            help="Input GeoJSON filename. The script will use the (`left`, `top`, `right`, `bottom`)"
+            "fields in `properties` to derive the bounds of the tile in map units.",
+        )
+        parser.add_argument(
+            "--output_dir",
+            type=str,
+            default="./output_tiles",
+            help="Name of output directory for downloaded JPEG tiles."
+            "The filenames will be derived from the id field in the input GeoJSON.",
+        )
+        parser.add_argument(
+            "--tile_size",
+            type=lambda t: [s.strip() for s in t.split(",")],
+            default="4019,4019",
+            help="Number of pixels in x,y in the resulting JPEG.",
+        )
+        parser.add_argument(
+            "--nthreads",
+            type=int,
+            default=8,
+            help="Number of simultaneous downloads from the server to perform."
+            "The default of 8 was found to work without error or reducing download speed."
+            "Higher numbers may cause requests to raise exceptions.",
+        )
+        return parser.parse_args()
 
-    with open(INPUT_JSON) as file:
+    args = parse_arguments()
+
+    with open(args.input_json) as file:
         raw_geojson = geojson.load(file)
 
     geojson_feature_list = raw_geojson["features"]
     num_tiles = len(geojson_feature_list)
     print(f"{num_tiles} tiles to process....")
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(args.output_dir, exist_ok=True)
 
     # Split up geojson_feature_list into N_THREADS roughly equal chunks
-    chunk_slices = get_chunk_slices(num_tiles, N_THREADS)
+    chunk_slices = get_chunk_slices(num_tiles, args.n_threads)
     # Create N_THREADS function calls - one for each chunk slice in the tile list.
     chunked_download = [
-        delayed(download_tiles)(geojson_feature_list[part], OUTPUT_DIR)
+        delayed(download_tiles)(
+            geojson_feature_list[part], args.output_dir, args.tile_size
+        )
         for part in chunk_slices
     ]
     # Go get em.
