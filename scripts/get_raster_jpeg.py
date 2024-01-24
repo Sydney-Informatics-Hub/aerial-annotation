@@ -42,9 +42,9 @@ def download_tiles(features, output_dir, tile_size):
 
     for feature in features:
         this_id = feature["properties"]["id"]
-        this_bbox = (
+        this_bbox = [
             feature["properties"][edge] for edge in ["left", "bottom", "right", "top"]
-        )
+        ]
         output_file = os.path.join(output_dir, str(this_id) + ".jpg")
         # Don't downliad tiles already downloaded.
         if os.path.exists(output_file):
@@ -103,7 +103,10 @@ def main(args=None):
             "--tile_size",
             type=lambda t: [s.strip() for s in t.split(",")],
             default="4019,4019",
-            help="Number of pixels in x,y in the resulting JPEG.",
+            help="Number of pixels in x,y in the resulting JPEG."
+            "NOTE: The default (4019,4019) will download tiles at zoom 21"
+            "(resolution 0.07464 m) for tiles of 300x300 m."
+            "Decrease this size for smaller tiles or for coarser zoom levels.",
         )
         parser.add_argument(
             "--nthreads",
@@ -127,7 +130,7 @@ def main(args=None):
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Split up geojson_feature_list into N_THREADS roughly equal chunks
-    chunk_slices = get_chunk_slices(num_tiles, args.n_threads)
+    chunk_slices = get_chunk_slices(num_tiles, args.nthreads)
     # Create N_THREADS function calls - one for each chunk slice in the tile list.
     chunked_download = [
         delayed(download_tiles)(
