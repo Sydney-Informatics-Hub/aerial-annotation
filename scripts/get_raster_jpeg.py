@@ -70,6 +70,8 @@ def download_tiles(features, output_dir, tile_size):
 def get_chunk_slices(list_length, num_chunks):
     """Return a list of `num_chunks` slices which roughly split `list_length`
     equally."""
+    # num_chunks must be <= list_length
+    num_chunks = min(num_chunks, list_length)
     chunk_indices = np.array_split(np.arange(list_length), num_chunks)
     avg_size = int(np.average([len(chunk) for chunk in chunk_indices]))
     print(
