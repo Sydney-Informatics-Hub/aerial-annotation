@@ -8,6 +8,7 @@ opencv-python
 osmtogeojson
 overpass
 overpy
+owslib
 Pillow
 pre-commit
 rasterio
