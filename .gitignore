@@ -169,3 +169,4 @@ draft/*.tif
 draft/xw*
 draft/test/
 draft/sa1*
+data/.DS_Store
