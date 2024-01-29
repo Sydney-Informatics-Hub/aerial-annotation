@@ -1,0 +1,17 @@
+geojson
+geopandas
+groundingdino-py
+matplotlib
+mercantile
+numpy
+opencv-python
+osmtogeojson
+overpass
+overpy
+owslib
+Pillow
+pre-commit
+rasterio
+requests
+rioxarray
+segment-geospatial

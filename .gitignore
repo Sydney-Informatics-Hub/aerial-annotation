@@ -160,14 +160,14 @@ cython_debug/
 #.idea/
 
 # Project specific
-data/*
-draft/*.xml
-draft/*.png
-draft/*.txt
-draft/*json
-draft/*.csv
-draft/*.tif
-draft/xw*
-draft/test/
-draft/sa1*
-data/.DS_Store
+aerial_annotation/data/*
+aerial_annotation/draft/*.xml
+aerial_annotation/draft/*.png
+aerial_annotation/draft/*.txt
+aerial_annotation/draft/*json
+aerial_annotation/draft/*.csv
+aerial_annotation/draft/*.tif
+aerial_annotation/draft/xw*
+aerial_annotation/draft/test/
+aerial_annotation/draft/sa1*
+aerial_annotation/data/.DS_Store
