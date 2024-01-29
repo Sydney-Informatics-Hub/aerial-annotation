@@ -14,6 +14,8 @@ Images and annotations stored in COCO JSON format.
 
 ## Installation Instructions
 
+To prepare the environment, run the following commands:
+
 ```
 conda create --name aerial-annotation python=3.9
 
@@ -62,7 +64,7 @@ In the above example the options are:
 
 `--box-threshold=0.23`: Box threshold for boxes smaller the `box-reject=0.9`.
 
-## Dataset
+### Toy Dataset
 
 A toy dataset has been uploaded to Roboflow. It is a small subset, containing Chatswood region, available [here](https://universe.roboflow.com/sih-vpfnf/gis-hd-200x200).
 
@@ -82,6 +84,19 @@ dataset_download_name = "coco-segmentation"
 project = rf.workspace(workspace_name).project(project_name)
 dataset = project.version(dataset_version).download(dataset_download_name)
 ```
+
+### Data Cleaning and Preparation
+
+Building data from OSM can be cleaned and prepared for level categorisation using the following code snippet:
+
+```
+python scripts/osm_cleaner.py --osm_path /path/to/tiles/osm_building_annotations_by_10_percent_grid/ --columns /data/osm_columns.csv 
+```
+
+Where `osm_columns.csv` is a CSV file containing the columns we are interested to keep from the OSM data. OSM columns of interest are located in `data/osm_columns.csv`.
+
+
+
 <!-- 
 # Register the dataset
 from detectron2.data.datasets import register_coco_instances
