@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import argparse
+import json
 import os
 import time
 
@@ -7,6 +8,7 @@ import geopandas
 import numpy as np
 from dask import compute, delayed
 from owslib.wms import WebMapService
+from shapely.geometry import Polygon
 
 # Download a list of JPEG tiles from the NSW Six Maps Web Map Server.
 # Tile boundaries are define in the input GeoJSON file
@@ -25,7 +27,7 @@ def request_image_from_server(wms_instance, output_file, attempts=3, **kwargs):
             with open(output_file, "wb") as this_image:
                 this_image.write(image_request.read())
             break
-        except:
+        except Exception:
             this_attempt += 1
             if this_attempt > attempts:
                 raise
@@ -83,6 +85,66 @@ def get_chunk_slices(list_length, num_chunks):
     ]
 
 
+def increase_bbox_extent(bbox, percentage):
+    width = bbox["right"] - bbox["left"]
+    height = bbox["bottom"] - bbox["top"]
+    increase_width = width * (percentage / 100)
+    increase_height = height * (percentage / 100)
+
+    bbox["left"] -= increase_width / 2
+    bbox["right"] += increase_width / 2
+    bbox["top"] -= increase_height / 2
+    bbox["bottom"] += increase_height / 2
+
+    return bbox
+
+
+def create_polygon_from_bbox(bbox):
+    return Polygon(
+        [
+            (bbox["left"], bbox["top"]),
+            (bbox["right"], bbox["top"]),
+            (bbox["right"], bbox["bottom"]),
+            (bbox["left"], bbox["bottom"]),
+            (bbox["left"], bbox["top"]),
+        ]
+    )
+
+
+def process_geojson(input_geojson, output_geojson, percentage_increase):
+    with open(input_geojson, "r") as infile:
+        data = json.load(infile)
+
+    features = data["features"]
+
+    for feature in features:
+        properties = feature["properties"]
+        geometry = feature["geometry"]
+
+        # Extract the bounding box from the properties
+        bbox = {
+            "left": properties["left"],
+            "top": properties["top"],
+            "right": properties["right"],
+            "bottom": properties["bottom"],
+        }
+
+        # Increase the bounding box extent
+        new_bbox = increase_bbox_extent(bbox, percentage_increase)
+
+        # Create a new polygon based on the updated bounding box
+        new_polygon = create_polygon_from_bbox(new_bbox)
+
+        # Update the geometry coordinates in the feature
+        geometry["coordinates"] = [list(new_polygon.exterior.coords)]
+
+    # Save the modified GeoJSON to a new file
+    with open(output_geojson, "w") as outfile:
+        json.dump(data, outfile)
+
+    return output_geojson
+
+
 def main(args=None):
     def parse_arguments():
         parser = argparse.ArgumentParser(
@@ -111,6 +173,12 @@ def main(args=None):
             "Decrease this size for smaller tiles or for coarser zoom levels.",
         )
         parser.add_argument(
+            "--overlap",
+            type=int,
+            default=0,
+            help="Overlap percentage to add to each tile. Default is 0.",
+        )
+        parser.add_argument(
             "--nthreads",
             type=int,
             default=8,
@@ -121,6 +189,13 @@ def main(args=None):
         return parser.parse_args()
 
     args = parse_arguments()
+
+    if args.overlap > 0:
+        output_geojson = os.path.join(
+            os.path.dirname(args.input_json),
+            f"enlarged_{os.path.basename(args.input_json)}",
+        )
+        args.input_json = process_geojson(args.input_json, output_geojson, args.overlap)
 
     geojson = geopandas.read_file(args.input_json)
 
