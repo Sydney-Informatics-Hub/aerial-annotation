@@ -193,7 +193,7 @@ def main(args=None):
     if args.overlap > 0:
         output_geojson = os.path.join(
             os.path.dirname(args.input_json),
-            f"enlarged_{os.path.basename(args.input_json)}",
+            f"{os.path.basename(args.input_json).split('.')[0]}_overlap{args.overlap}.geojson",
         )
         args.input_json = process_geojson(args.input_json, output_geojson, args.overlap)
 
