@@ -135,6 +135,12 @@ def process_geojson(input_geojson, output_geojson, percentage_increase):
         # Create a new polygon based on the updated bounding box
         new_polygon = create_polygon_from_bbox(new_bbox)
 
+        # Update the properties with the new bounding box
+        properties["left"] = new_bbox["left"]
+        properties["top"] = new_bbox["top"]
+        properties["right"] = new_bbox["right"]
+        properties["bottom"] = new_bbox["bottom"]
+
         # Update the geometry coordinates in the feature
         geometry["coordinates"] = [list(new_polygon.exterior.coords)]
 
